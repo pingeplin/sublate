@@ -1,16 +1,17 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::State;
 
 use crate::error::{AppError, AppResult};
+use crate::file_name::OutputLocation;
 use crate::languages::{find_target, Language, TARGET_LANGUAGES};
 use crate::metadata::{SubtitleTrack, VideoMetadata};
 use crate::subtitle_job::translate_subtitle_file;
 use crate::translate::{TranslationPlan, Translator};
-use crate::ytdlp::{subtitle_path, YtDlp};
+use crate::ytdlp::YtDlp;
 
 pub struct AppState {
     pub ytdlp: YtDlp,
@@ -24,6 +25,19 @@ pub enum JobEvent {
     VideoProgress { percent: f32 },
     SubtitleDownloaded { path: PathBuf },
     TranslationProgress { done: usize, total: usize },
+}
+
+#[derive(Deserialize)]
+pub struct VideoRef {
+    pub url: String,
+    pub id: String,
+    pub title: String,
+}
+
+impl VideoRef {
+    fn output(&self, out_dir: PathBuf) -> OutputLocation {
+        OutputLocation::new(out_dir, &self.title, &self.id)
+    }
 }
 
 #[derive(Serialize)]
@@ -52,14 +66,15 @@ pub async fn fetch_metadata(state: State<'_, AppState>, url: String) -> AppResul
 #[tauri::command]
 pub async fn download_video(
     state: State<'_, AppState>,
-    url: String,
+    video: VideoRef,
     out_dir: PathBuf,
     on_event: Channel<JobEvent>,
 ) -> AppResult<PathBuf> {
-    tokio::fs::create_dir_all(&out_dir).await?;
+    let out = video.output(out_dir);
+    tokio::fs::create_dir_all(out.dir()).await?;
     state
         .ytdlp
-        .download_video(&url, &out_dir, |percent| {
+        .download_video(&video.url, &out, |percent| {
             let _ = on_event.send(JobEvent::VideoProgress { percent });
         })
         .await
@@ -68,25 +83,25 @@ pub async fn download_video(
 #[tauri::command]
 pub async fn translate_subtitles(
     state: State<'_, AppState>,
-    url: String,
-    video_id: String,
+    video: VideoRef,
     out_dir: PathBuf,
     track: SubtitleTrack,
     target: String,
     on_event: Channel<JobEvent>,
 ) -> AppResult<SubtitleOutput> {
     let target = find_target(&target).ok_or(AppError::UnknownLanguage(target))?;
-    tokio::fs::create_dir_all(&out_dir).await?;
+    let out = video.output(out_dir);
+    tokio::fs::create_dir_all(out.dir()).await?;
 
     let source_path = state
         .ytdlp
-        .download_subtitle(&url, &video_id, &out_dir, &track)
+        .download_subtitle(&video.url, &out, &track)
         .await?;
     let _ = on_event.send(JobEvent::SubtitleDownloaded {
         path: source_path.clone(),
     });
 
-    let translated_path = subtitle_path(&out_dir, &video_id, target.code);
+    let translated_path = out.subtitle(target.code);
     let cue_count = translate_subtitle_file(
         state.translator.as_ref(),
         &source_path,

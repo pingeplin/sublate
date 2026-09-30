@@ -10,7 +10,7 @@ use super::{BatchRequest, Translator};
 use crate::auth::CredentialProvider;
 use crate::error::{AppError, AppResult};
 
-pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
+pub const DEFAULT_MODEL: &str = "claude-sonnet-5-5";
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
@@ -98,8 +98,9 @@ fn system_prompt(source: &str, target: &str) -> String {
          the sequence read naturally in {target}, while keeping each translation aligned with \
          the content of its own cue. Never merge, split, drop or reorder items: return exactly \
          one translation for every id. Preserve line breaks inside an item. Keep names, numbers \
-         and units accurate. The `context` lines precede this batch and are for reference only; \
-         do not translate them."
+         and units accurate. Follow the punctuation conventions of {target}; Chinese and \
+         Japanese use full-width punctuation (，。？！). The `context` lines precede this \
+         batch and are for reference only; do not translate them."
     )
 }
 

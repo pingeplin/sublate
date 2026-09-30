@@ -1,6 +1,7 @@
 //! Network-dependent checks. Run with `cargo test --test live_test -- --ignored --nocapture`.
 
 use contents_title_lib::auth::resolve_provider;
+use contents_title_lib::file_name::OutputLocation;
 use contents_title_lib::metadata::TrackKind;
 use contents_title_lib::process_env::ProcessEnv;
 use contents_title_lib::subtitle::parse_srt;
@@ -19,7 +20,8 @@ async fn ytdlp_fetches_metadata_and_downloads_auto_subtitle() {
     let track = meta.subtitles.iter().find(|t| t.kind == TrackKind::Auto).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
-    let path = ytdlp.download_subtitle(&meta.url, &meta.id, dir.path(), track).await.unwrap();
+    let out = OutputLocation::new(dir.path(), &meta.title, &meta.id);
+    let path = ytdlp.download_subtitle(&meta.url, &out, track).await.unwrap();
     let cues = parse_srt(&std::fs::read_to_string(&path).unwrap()).unwrap();
     println!("{} -> {} cues at {}", track.code, cues.len(), path.display());
     assert!(!cues.is_empty());
@@ -30,7 +32,8 @@ async fn ytdlp_fetches_metadata_and_downloads_auto_subtitle() {
 async fn ytdlp_downloads_video_without_subtitles() {
     let ytdlp = YtDlp::new(ProcessEnv::from_login_shell());
     let dir = tempfile::tempdir().unwrap();
-    let path = ytdlp.download_video(SHORT_VIDEO, dir.path(), |_| {}).await.unwrap();
+    let out = OutputLocation::new(dir.path(), "Me at the zoo?", "jNQXAC9IVRw");
+    let path = ytdlp.download_video(SHORT_VIDEO, &out, |_| {}).await.unwrap();
     let files: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name()).collect();
     println!("video: {} / dir: {files:?}", path.display());
     assert!(path.is_file());
@@ -89,5 +92,8 @@ async fn claude_translates_full_auto_caption_file() {
 
     let written = std::fs::read_to_string(&output).unwrap();
     println!("{count} cues\n{}", written.lines().take(16).collect::<Vec<_>>().join("\n"));
-    assert_eq!(parse_srt(&written).unwrap().len(), count);
+    let cues = parse_srt(&written).unwrap();
+    assert_eq!(cues.len(), count);
+    assert!(cues.iter().all(|c| !c.text.trim().is_empty()));
+    assert!(!written.contains(", ") && !written.contains(". "));
 }

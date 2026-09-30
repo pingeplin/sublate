@@ -69,6 +69,26 @@ pub fn collapse_rolling(cues: Vec<Cue>) -> Vec<Cue> {
     out
 }
 
+/// Word order can move a cue's meaning into its neighbour (e.g. Korean verb-final
+/// fragments), leaving an empty translation. Fold empty cues into the previous cue's
+/// time span, or into the next cue when there is no previous one.
+pub fn absorb_empty_cues(cues: Vec<Cue>) -> Vec<Cue> {
+    let mut out: Vec<Cue> = Vec::with_capacity(cues.len());
+    let mut pending_start: Option<u64> = None;
+    for cue in cues {
+        if cue.text.trim().is_empty() {
+            match out.last_mut() {
+                Some(prev) => prev.end_ms = prev.end_ms.max(cue.end_ms),
+                None => pending_start = Some(pending_start.unwrap_or(cue.start_ms)),
+            }
+            continue;
+        }
+        let start_ms = pending_start.take().unwrap_or(cue.start_ms);
+        out.push(Cue { start_ms, ..cue });
+    }
+    out
+}
+
 fn parse_timestamp(raw: &str) -> AppResult<u64> {
     let invalid = || AppError::Subtitle(format!("bad timestamp '{}'", raw.trim()));
     let token = raw.split_whitespace().next().ok_or_else(invalid)?;

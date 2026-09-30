@@ -1,9 +1,11 @@
 pub mod auth;
 mod commands;
 pub mod error;
+pub mod file_name;
 pub mod languages;
 pub mod metadata;
 pub mod process_env;
+pub mod punctuation;
 pub mod subtitle;
 pub mod subtitle_job;
 pub mod translate;

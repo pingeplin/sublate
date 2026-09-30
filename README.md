@@ -22,15 +22,15 @@ pnpm tauri dev
 
 ## Output
 
-Files land in `~/Downloads/contents-title/` by default:
+Files land in `~/Downloads/contents-title/` by default, named after the video title (reserved characters such as `? / :` become full-width look-alikes; the video id is used if the title is empty):
 
 | File | Content |
 | --- | --- |
-| `<id>.mp4` | Video (no embedded subtitles) |
-| `<id>.<src>.srt` | Source subtitle as downloaded (e.g. `ko-orig`) |
-| `<id>.<target>.srt` | Translated subtitle (e.g. `zh-TW`) |
+| `<title>.<ext>` | Video in yt-dlp's best format (usually `.webm`/`.mkv`; play with IINA or VLC), no embedded subtitles |
+| `<title>.<src>.srt` | Source subtitle as downloaded (e.g. `ko-orig`) |
+| `<title>.<target>.srt` | Translated subtitle (e.g. `zh-TW`) |
 
-YouTube auto-captions scroll (each cue repeats the previous line); the translated file collapses them into clean, non-overlapping cues.
+YouTube auto-captions scroll (each cue repeats the previous line); the translated file collapses them into clean, non-overlapping cues. Translation uses `claude-sonnet-5-5` (effort `medium`); Chinese and Japanese output is post-processed so half-width punctuation next to CJK text becomes full-width.
 
 ## Tests
 

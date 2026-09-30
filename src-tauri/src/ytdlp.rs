@@ -1,14 +1,14 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Stdio;
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::error::{AppError, AppResult};
+use crate::file_name::OutputLocation;
 use crate::metadata::{parse_metadata, SubtitleTrack, TrackKind, VideoMetadata};
 use crate::process_env::ProcessEnv;
 
 const PROGRAM: &str = "yt-dlp";
-const OUTPUT_TEMPLATE: &str = "%(id)s.%(ext)s";
 const STDERR_TAIL_LINES: usize = 8;
 
 pub struct YtDlp {
@@ -30,11 +30,11 @@ impl YtDlp {
     pub async fn download_video(
         &self,
         url: &str,
-        out_dir: &Path,
+        out: &OutputLocation,
         on_progress: impl Fn(f32),
     ) -> AppResult<PathBuf> {
         let stdout = self
-            .run(&self.video_args(url, out_dir), |line| {
+            .run(&self.video_args(url, out), |line| {
                 if let Some(pct) = parse_progress(line) {
                     on_progress(pct);
                 }
@@ -51,12 +51,11 @@ impl YtDlp {
     pub async fn download_subtitle(
         &self,
         url: &str,
-        video_id: &str,
-        out_dir: &Path,
+        out: &OutputLocation,
         track: &SubtitleTrack,
     ) -> AppResult<PathBuf> {
-        self.run(&self.subtitle_args(url, out_dir, track), |_| {}).await?;
-        let path = subtitle_path(out_dir, video_id, &track.code);
+        self.run(&self.subtitle_args(url, out, track), |_| {}).await?;
+        let path = out.subtitle(&track.code);
         if path.is_file() {
             Ok(path)
         } else {
@@ -82,25 +81,16 @@ impl YtDlp {
         args
     }
 
-    fn video_args(&self, url: &str, out_dir: &Path) -> Vec<String> {
+    fn video_args(&self, url: &str, out: &OutputLocation) -> Vec<String> {
         let mut args = self.base_args();
         args.extend(
-            [
-                "--newline",
-                "--progress",
-                "-S",
-                "ext",
-                "--print",
-                "after_move:filepath",
-                "-o",
-            ]
-            .map(String::from),
+            ["--newline", "--progress", "--print", "after_move:filepath", "-o"].map(String::from),
         );
-        args.extend([output_template(out_dir), url.into()]);
+        args.extend([out.ytdlp_template(), url.into()]);
         args
     }
 
-    fn subtitle_args(&self, url: &str, out_dir: &Path, track: &SubtitleTrack) -> Vec<String> {
+    fn subtitle_args(&self, url: &str, out: &OutputLocation, track: &SubtitleTrack) -> Vec<String> {
         let write_flag = match track.kind {
             TrackKind::Manual => "--write-subs",
             TrackKind::Auto => "--write-auto-subs",
@@ -110,7 +100,7 @@ impl YtDlp {
             ["--skip-download", write_flag, "--sub-langs", &track.code, "--convert-subs", "srt", "-o"]
                 .map(String::from),
         );
-        args.extend([output_template(out_dir), url.into()]);
+        args.extend([out.ytdlp_template(), url.into()]);
         args
     }
 
@@ -150,14 +140,6 @@ impl YtDlp {
     }
 }
 
-pub fn subtitle_path(out_dir: &Path, video_id: &str, lang: &str) -> PathBuf {
-    out_dir.join(format!("{video_id}.{lang}.srt"))
-}
-
-fn output_template(out_dir: &Path) -> String {
-    out_dir.join(OUTPUT_TEMPLATE).to_string_lossy().into_owned()
-}
-
 /// YouTube extraction needs a JS runtime; yt-dlp only enables deno by default.
 fn detect_js_runtime(env: &ProcessEnv) -> Option<String> {
     if env.resolve("deno").is_some() {
@@ -188,6 +170,10 @@ mod tests {
         }
     }
 
+    fn out() -> OutputLocation {
+        OutputLocation::new("/o", "T", "id")
+    }
+
     fn track(code: &str, kind: TrackKind) -> SubtitleTrack {
         SubtitleTrack { code: code.into(), name: code.into(), kind }
     }
@@ -211,30 +197,26 @@ mod tests {
 
     #[test]
     fn video_args_never_embed_subtitles() {
-        let args = ytdlp(None).video_args("U", Path::new("/out"));
-        assert!(args.iter().all(|a| !a.contains("sub")));
-        assert!(args.windows(2).any(|w| w == ["-o", "/out/%(id)s.%(ext)s"]));
-        assert_eq!(args.last().unwrap(), "U");
+        let args = ytdlp(None).video_args("U", &OutputLocation::new("/out", "Title", "id"));
+        assert_eq!(
+            args,
+            [
+                "--no-playlist", "--newline", "--progress", "--print", "after_move:filepath",
+                "-o", "/out/Title.%(ext)s", "U",
+            ]
+        );
     }
 
     #[test]
     fn subtitle_args_pick_flag_by_track_kind() {
-        let auto = ytdlp(None).subtitle_args("U", Path::new("/o"), &track("ko-orig", TrackKind::Auto));
+        let auto = ytdlp(None).subtitle_args("U", &out(), &track("ko-orig", TrackKind::Auto));
         assert!(auto.contains(&"--write-auto-subs".to_string()));
         assert!(auto.windows(2).any(|w| w == ["--sub-langs", "ko-orig"]));
         assert!(auto.contains(&"--skip-download".to_string()));
 
-        let manual = ytdlp(None).subtitle_args("U", Path::new("/o"), &track("en", TrackKind::Manual));
+        let manual = ytdlp(None).subtitle_args("U", &out(), &track("en", TrackKind::Manual));
         assert!(manual.contains(&"--write-subs".to_string()));
         assert!(!manual.contains(&"--write-auto-subs".to_string()));
-    }
-
-    #[test]
-    fn subtitle_path_follows_output_template() {
-        assert_eq!(
-            subtitle_path(Path::new("/o"), "abc", "zh-TW"),
-            PathBuf::from("/o/abc.zh-TW.srt")
-        );
     }
 
     #[test]

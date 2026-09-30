@@ -1,4 +1,4 @@
-use contents_title_lib::subtitle::{collapse_rolling, parse_srt, to_srt, Cue};
+use contents_title_lib::subtitle::{absorb_empty_cues, collapse_rolling, parse_srt, to_srt, Cue};
 
 fn fixture(name: &str) -> String {
     std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
@@ -59,4 +59,21 @@ fn collapses_youtube_rolling_auto_captions() {
 fn collapse_keeps_distinct_consecutive_cues() {
     let cues = vec![cue(0, 1000, "A"), cue(1000, 2000, "B")];
     assert_eq!(collapse_rolling(cues.clone()), cues);
+}
+
+#[test]
+fn empty_cues_extend_the_previous_cue() {
+    let cues = vec![cue(0, 1000, "A"), cue(1010, 2000, " "), cue(2010, 3000, ""), cue(3010, 4000, "B")];
+    assert_eq!(absorb_empty_cues(cues), [cue(0, 3000, "A"), cue(3010, 4000, "B")]);
+}
+
+#[test]
+fn leading_empty_cues_extend_the_next_cue_backwards() {
+    let cues = vec![cue(0, 1000, ""), cue(1010, 2000, ""), cue(2010, 3000, "A")];
+    assert_eq!(absorb_empty_cues(cues), [cue(0, 3000, "A")]);
+}
+
+#[test]
+fn all_empty_cues_yield_nothing() {
+    assert!(absorb_empty_cues(vec![cue(0, 1000, "")]).is_empty());
 }

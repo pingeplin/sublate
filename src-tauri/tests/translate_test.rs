@@ -169,3 +169,40 @@ async fn subtitle_file_job_collapses_auto_captions_and_writes_separate_srt() {
     assert_eq!(src_lang, "Korean");
     assert_eq!(tgt_lang, "Traditional Chinese as used in Taiwan");
 }
+
+struct HalfWidthTranslator;
+
+#[async_trait]
+impl Translator for HalfWidthTranslator {
+    async fn translate(&self, r: BatchRequest<'_>) -> AppResult<Vec<String>> {
+        Ok(r.lines.iter().map(|_| "政府, 上個月調漲了 3.5%.".to_string()).collect())
+    }
+}
+
+#[tokio::test]
+async fn subtitle_file_job_normalizes_punctuation_for_the_target_language() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("v.en.srt");
+    std::fs::write(&source, "1\n00:00:01,000 --> 00:00:02,000\nHello\n").unwrap();
+    let track = SubtitleTrack { code: "en".into(), name: "English".into(), kind: TrackKind::Manual };
+
+    for (target, expected) in [
+        ("zh-TW", "政府，上個月調漲了 3.5%。"),
+        ("en", "政府, 上個月調漲了 3.5%."),
+    ] {
+        let output = dir.path().join(format!("v.{target}.srt"));
+        translate_subtitle_file(
+            &HalfWidthTranslator,
+            &source,
+            &track,
+            find_target(target).unwrap(),
+            &output,
+            TranslationPlan::default(),
+            |_, _| {},
+        )
+        .await
+        .unwrap();
+        let written = parse_srt(&std::fs::read_to_string(&output).unwrap()).unwrap();
+        assert_eq!(written[0].text, expected, "target {target}");
+    }
+}

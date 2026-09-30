@@ -3,10 +3,12 @@ use std::path::Path;
 use crate::error::AppResult;
 use crate::languages::Language;
 use crate::metadata::{SubtitleTrack, TrackKind};
-use crate::subtitle::{collapse_rolling, parse_srt, to_srt};
+use crate::punctuation::normalize;
+use crate::subtitle::{absorb_empty_cues, collapse_rolling, parse_srt, to_srt, Cue};
 use crate::translate::{translate_cues, TranslationPlan, Translator};
 
-/// Reads a downloaded subtitle, translates it, and writes a standalone .srt next to it.
+/// Reads a downloaded subtitle, translates it, cleans the result (punctuation, empty
+/// cues), and writes a standalone .srt next to it.
 pub async fn translate_subtitle_file(
     translator: &dyn Translator,
     source_path: &Path,
@@ -30,6 +32,14 @@ pub async fn translate_subtitle_file(
         on_progress,
     )
     .await?;
-    tokio::fs::write(output_path, to_srt(&translated)).await?;
-    Ok(translated.len())
+    let normalized = translated
+        .into_iter()
+        .map(|cue| Cue {
+            text: normalize(&cue.text, target.punctuation),
+            ..cue
+        })
+        .collect();
+    let cleaned = absorb_empty_cues(normalized);
+    tokio::fs::write(output_path, to_srt(&cleaned)).await?;
+    Ok(cleaned.len())
 }

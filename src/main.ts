@@ -159,7 +159,7 @@ async function getContent() {
   try {
     const jobs: Promise<void>[] = [];
     if (withVideo) {
-      jobs.push(api.downloadVideo(video.url, outDir, onJobEvent).then((p) => addResult("Video", p)));
+      jobs.push(api.downloadVideo(video, outDir, onJobEvent).then((p) => addResult("Video", p)));
     }
     if (track) {
       jobs.push(
