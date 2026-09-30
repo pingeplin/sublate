@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::{AppError, AppResult};
+
 const ORIGINAL_SUFFIX: &str = "-orig";
 const EXCLUDED_TRACKS: &[&str] = &["live_chat"];
 
@@ -48,6 +50,8 @@ struct RawFormat {
 
 #[derive(Deserialize)]
 struct RawMetadata {
+    #[serde(rename = "_type")]
+    kind: Option<String>,
     id: String,
     title: String,
     thumbnail: Option<String>,
@@ -58,8 +62,13 @@ struct RawMetadata {
     automatic_captions: Option<RawTracks>,
 }
 
-pub fn parse_metadata(json: &str, requested_url: &str) -> serde_json::Result<VideoMetadata> {
+pub fn parse_metadata(json: &str, requested_url: &str) -> AppResult<VideoMetadata> {
     let raw: RawMetadata = serde_json::from_str(json)?;
+    if matches!(raw.kind.as_deref(), Some("playlist" | "multi_video")) {
+        return Err(AppError::Unsupported(
+            "playlists aren't supported; paste the URL of a single video".into(),
+        ));
+    }
     let mut subtitles = manual_tracks(raw.subtitles.as_ref());
     subtitles.extend(original_auto_tracks(
         raw.automatic_captions.as_ref(),

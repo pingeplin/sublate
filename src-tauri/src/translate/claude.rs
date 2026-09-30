@@ -36,42 +36,68 @@ impl ClaudeTranslator {
     async fn send(&self, body: &Value) -> AppResult<String> {
         let mut attempt = 1;
         loop {
-            let credential = self.credentials.credential().await?;
-            let (auth_name, auth_value) = credential.header();
-            let betas = [Some(FALLBACK_BETA), credential.beta()]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-                .join(",");
-            let response = self
-                .http
-                .post(API_URL)
-                .header(auth_name, auth_value)
-                .header("anthropic-version", API_VERSION)
-                .header("anthropic-beta", betas)
-                .json(body)
-                .send()
-                .await;
+            match self.post(body).await {
+                Ok(text) => return Ok(text),
+                Err(Failure::Transient { retry_after, .. }) if attempt < MAX_HTTP_ATTEMPTS => {
+                    tokio::time::sleep(retry_after.unwrap_or_else(|| backoff(attempt))).await;
+                    attempt += 1;
+                }
+                Err(Failure::Transient { error, .. } | Failure::Fatal(error)) => return Err(error),
+            }
+        }
+    }
 
-            let retry_after = match response {
-                Ok(resp) if resp.status().is_success() => {
-                    return resp.text().await.map_err(|e| AppError::Api(e.to_string()));
-                }
-                Ok(resp) if is_retryable(resp.status()) && attempt < MAX_HTTP_ATTEMPTS => {
-                    retry_after(&resp).unwrap_or_else(|| backoff(attempt))
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    let text = resp.text().await.unwrap_or_default();
-                    return Err(AppError::Api(describe_error(status, &text)));
-                }
-                Err(e) if (e.is_timeout() || e.is_connect()) && attempt < MAX_HTTP_ATTEMPTS => {
-                    backoff(attempt)
-                }
-                Err(e) => return Err(AppError::Api(e.to_string())),
-            };
-            tokio::time::sleep(retry_after).await;
-            attempt += 1;
+    async fn post(&self, body: &Value) -> Result<String, Failure> {
+        let credential = self.credentials.credential().await.map_err(Failure::Fatal)?;
+        let (auth_name, auth_value) = credential.header();
+        let betas = [Some(FALLBACK_BETA), credential.beta()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(",");
+        let response = self
+            .http
+            .post(API_URL)
+            .header(auth_name, auth_value)
+            .header("anthropic-version", API_VERSION)
+            .header("anthropic-beta", betas)
+            .json(body)
+            .send()
+            .await
+            .map_err(transport_failure)?;
+
+        let status = response.status();
+        if status.is_success() {
+            return response.text().await.map_err(transport_failure);
+        }
+        let retry_after = retry_after(&response);
+        let error = AppError::Api(describe_error(status, &response.text().await.unwrap_or_default()));
+        Err(if is_retryable(status) {
+            Failure::Transient { error, retry_after }
+        } else {
+            Failure::Fatal(error)
+        })
+    }
+}
+
+enum Failure {
+    Transient {
+        error: AppError,
+        retry_after: Option<Duration>,
+    },
+    Fatal(AppError),
+}
+
+/// Connection resets, HTTP/2 GOAWAY and body read errors may all succeed on a fresh
+/// connection; only a request that could not be built is hopeless.
+fn transport_failure(e: reqwest::Error) -> Failure {
+    let error = AppError::Api(e.to_string());
+    if e.is_builder() {
+        Failure::Fatal(error)
+    } else {
+        Failure::Transient {
+            error,
+            retry_after: None,
         }
     }
 }
@@ -185,9 +211,7 @@ fn parse_response(body: &str, expected: usize) -> AppResult<Vec<String>> {
                 details.and_then(|d| d.explanation).unwrap_or_default()
             )));
         }
-        Some("max_tokens") => {
-            return Err(AppError::Translation("response truncated at max_tokens".into()))
-        }
+        Some("max_tokens") => return Err(AppError::Truncated),
         _ => {}
     }
     let text: String = response
@@ -323,8 +347,11 @@ mod tests {
     }
 
     #[test]
-    fn truncation_is_retryable() {
-        assert!(parse_response(&api_body("{", "max_tokens"), 1).unwrap_err().is_retryable());
+    fn truncation_is_reported_distinctly() {
+        assert!(matches!(
+            parse_response(&api_body("{", "max_tokens"), 1),
+            Err(AppError::Truncated)
+        ));
     }
 
     #[test]

@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 use crate::error::{AppError, AppResult};
 use crate::file_name::OutputLocation;
@@ -16,18 +17,35 @@ const PATH_TAG: &str = "CT_PATH";
 pub struct YtDlp {
     env: ProcessEnv,
     use_node: bool,
+    /// `-J` output of the last fetched video, keyed by its page URL.
+    last_info: Mutex<Option<(String, Arc<str>)>>,
+}
+
+/// Where yt-dlp reads the video from.
+#[derive(Clone, Copy)]
+enum Source<'a> {
+    Url(&'a str),
+    /// Info JSON from an earlier `-J`, fed through stdin; skips re-extracting the page.
+    InfoJson,
 }
 
 impl YtDlp {
     /// YouTube extraction needs a JS runtime; yt-dlp only enables deno by default.
     pub fn new(env: ProcessEnv) -> Self {
         let use_node = env.resolve("deno").is_none() && env.resolve("node").is_some();
-        Self { env, use_node }
+        Self {
+            env,
+            use_node,
+            last_info: Mutex::new(None),
+        }
     }
 
     pub async fn fetch_metadata(&self, url: &str) -> AppResult<VideoMetadata> {
-        let stdout = self.run(&self.metadata_args(url), |_| {}).await?;
-        Ok(parse_metadata(&stdout, url)?)
+        let args = self.args(&["-J", "--flat-playlist"], Source::Url(url));
+        let stdout = self.run(&args, None, None, |_| {}).await?;
+        let metadata = parse_metadata(&stdout, url)?;
+        *self.last_info.lock().expect("info cache lock") = Some((metadata.url.clone(), stdout.into()));
+        Ok(metadata)
     }
 
     pub async fn download_video(
@@ -36,8 +54,11 @@ impl YtDlp {
         out: &OutputLocation,
         on_progress: impl Fn(f32),
     ) -> AppResult<PathBuf> {
+        let progress = format!("download:{PROGRESS_TAG} %(progress._percent)s");
+        let path = format!("after_move:{PATH_TAG} %(filepath)s");
+        let flags = ["--newline", "--progress", "--progress-template", &progress, "--print", &path];
         let stdout = self
-            .run(&self.video_args(url, out), |line| {
+            .download(url, out, &flags, |line| {
                 if let Some(percent) = tagged(line, PROGRESS_TAG).and_then(|v| v.parse().ok()) {
                     on_progress(percent);
                 }
@@ -56,7 +77,8 @@ impl YtDlp {
         out: &OutputLocation,
         track: &SubtitleTrack,
     ) -> AppResult<PathBuf> {
-        self.run(&self.subtitle_args(url, out, track), |_| {}).await?;
+        let flags = ["--skip-download", write_flag(track.kind), "--sub-langs", &track.code, "--convert-subs", "srt"];
+        self.download(url, out, &flags, |_| {}).await?;
         let path = out.subtitle(&track.code);
         if path.is_file() {
             Ok(path)
@@ -69,54 +91,79 @@ impl YtDlp {
         }
     }
 
-    fn metadata_args(&self, url: &str) -> Vec<String> {
-        self.args(&["-J"], url)
-    }
-
-    fn video_args(&self, url: &str, out: &OutputLocation) -> Vec<String> {
-        let progress = format!("download:{PROGRESS_TAG} %(progress._percent)s");
-        let path = format!("after_move:{PATH_TAG} %(filepath)s");
+    /// Runs inside the output directory with a relative template, so the directory path is
+    /// never subject to yt-dlp's template or environment-variable expansion. Reuses the
+    /// fetched info JSON when available; its stream URLs expire after a few hours, so a
+    /// failure falls back to extracting from the page again.
+    async fn download(
+        &self,
+        url: &str,
+        out: &OutputLocation,
+        flags: &[&str],
+        on_line: impl Fn(&str),
+    ) -> AppResult<String> {
+        tokio::fs::create_dir_all(out.dir()).await?;
         let template = out.ytdlp_template();
-        self.args(
-            &["--newline", "--progress", "--progress-template", &progress, "--print", &path, "-o", &template],
-            url,
-        )
+        let flags = [flags, &["-o", &template]].concat();
+        if let Some(info) = self.cached_info(url) {
+            let args = self.args(&flags, Source::InfoJson);
+            if let Ok(stdout) = self.run(&args, Some(info), Some(out.dir()), &on_line).await {
+                return Ok(stdout);
+            }
+        }
+        let args = self.args(&flags, Source::Url(url));
+        self.run(&args, None, Some(out.dir()), &on_line).await
     }
 
-    fn subtitle_args(&self, url: &str, out: &OutputLocation, track: &SubtitleTrack) -> Vec<String> {
-        let write_flag = match track.kind {
-            TrackKind::Manual => "--write-subs",
-            TrackKind::Auto => "--write-auto-subs",
-        };
-        let template = out.ytdlp_template();
-        self.args(
-            &["--skip-download", write_flag, "--sub-langs", &track.code, "--convert-subs", "srt", "-o", &template],
-            url,
-        )
+    fn cached_info(&self, url: &str) -> Option<Arc<str>> {
+        let cache = self.last_info.lock().expect("info cache lock");
+        cache
+            .as_ref()
+            .filter(|(cached_url, _)| cached_url == url)
+            .map(|(_, info)| Arc::clone(info))
     }
 
-    fn args(&self, flags: &[&str], url: &str) -> Vec<String> {
+    fn args(&self, flags: &[&str], source: Source) -> Vec<String> {
         let runtime: &[&str] = if self.use_node { &["--js-runtimes", "node"] } else { &[] };
+        // `--` keeps a URL that starts with `-` from being read as an option.
+        let input: &[&str] = match source {
+            Source::Url(url) => &["--", url],
+            Source::InfoJson => &["--load-info-json", "-"],
+        };
         ["--no-playlist"]
             .iter()
             .chain(runtime)
             .chain(flags)
-            .chain([&url])
+            .chain(input)
             .map(|s| s.to_string())
             .collect()
     }
 
-    async fn run(&self, args: &[String], on_line: impl Fn(&str)) -> AppResult<String> {
-        let mut child = self
-            .env
-            .command(PROGRAM)
+    async fn run(
+        &self,
+        args: &[String],
+        stdin: Option<Arc<str>>,
+        cwd: Option<&Path>,
+        on_line: impl Fn(&str),
+    ) -> AppResult<String> {
+        let mut command = self.env.command(PROGRAM);
+        command
             .args(args)
-            .stdin(Stdio::null())
+            .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        let mut child = command
             .spawn()
             .map_err(|e| AppError::YtDlp(format!("cannot start {PROGRAM}: {e}")))?;
 
+        if let (Some(input), Some(mut pipe)) = (stdin, child.stdin.take()) {
+            tokio::spawn(async move {
+                let _ = pipe.write_all(input.as_bytes()).await;
+            });
+        }
         let mut stderr = child.stderr.take().expect("stderr is piped");
         let stderr_task = tokio::spawn(async move {
             let mut buf = String::new();
@@ -142,6 +189,13 @@ impl YtDlp {
     }
 }
 
+fn write_flag(kind: TrackKind) -> &'static str {
+    match kind {
+        TrackKind::Manual => "--write-subs",
+        TrackKind::Auto => "--write-auto-subs",
+    }
+}
+
 /// Our `--print`/`--progress-template` lines are prefixed with a tag and a space.
 fn tagged<'a>(line: &'a str, tag: &str) -> Option<&'a str> {
     line.strip_prefix(tag)?.strip_prefix(' ')
@@ -158,17 +212,9 @@ mod tests {
 
     fn ytdlp(use_node: bool) -> YtDlp {
         YtDlp {
-            env: ProcessEnv::default(),
             use_node,
+            ..YtDlp::new(ProcessEnv::default())
         }
-    }
-
-    fn out() -> OutputLocation {
-        OutputLocation::new("/o", "T", "id")
-    }
-
-    fn track(code: &str, kind: TrackKind) -> SubtitleTrack {
-        SubtitleTrack { code: code.into(), name: code.into(), kind }
     }
 
     #[test]
@@ -180,38 +226,34 @@ mod tests {
     }
 
     #[test]
-    fn metadata_args_include_node_runtime_when_selected() {
+    fn url_follows_end_of_options_marker() {
         assert_eq!(
-            ytdlp(true).metadata_args("U"),
-            ["--no-playlist", "--js-runtimes", "node", "-J", "U"]
+            ytdlp(true).args(&["-J"], Source::Url("--exec=x")),
+            ["--no-playlist", "--js-runtimes", "node", "-J", "--", "--exec=x"]
         );
-        assert_eq!(ytdlp(false).metadata_args("U"), ["--no-playlist", "-J", "U"]);
+        assert_eq!(ytdlp(false).args(&["-J"], Source::Url("U")), ["--no-playlist", "-J", "--", "U"]);
     }
 
     #[test]
-    fn video_args_tag_machine_output_and_never_embed_subtitles() {
-        let args = ytdlp(false).video_args("U", &OutputLocation::new("/out", "Title", "id"));
+    fn cached_info_is_read_from_stdin_without_url() {
         assert_eq!(
-            args,
-            [
-                "--no-playlist", "--newline", "--progress",
-                "--progress-template", "download:CT_PROGRESS %(progress._percent)s",
-                "--print", "after_move:CT_PATH %(filepath)s",
-                "-o", "/out/Title.%(ext)s", "U",
-            ]
+            ytdlp(false).args(&["--skip-download"], Source::InfoJson),
+            ["--no-playlist", "--skip-download", "--load-info-json", "-"]
         );
     }
 
     #[test]
-    fn subtitle_args_pick_flag_by_track_kind() {
-        let auto = ytdlp(false).subtitle_args("U", &out(), &track("ko-orig", TrackKind::Auto));
-        assert!(auto.contains(&"--write-auto-subs".to_string()));
-        assert!(auto.windows(2).any(|w| w == ["--sub-langs", "ko-orig"]));
-        assert!(auto.contains(&"--skip-download".to_string()));
+    fn info_cache_only_serves_the_same_page() {
+        let ytdlp = ytdlp(false);
+        *ytdlp.last_info.lock().unwrap() = Some(("https://a".into(), "{}".into()));
+        assert!(ytdlp.cached_info("https://a").is_some());
+        assert!(ytdlp.cached_info("https://b").is_none());
+    }
 
-        let manual = ytdlp(false).subtitle_args("U", &out(), &track("en", TrackKind::Manual));
-        assert!(manual.contains(&"--write-subs".to_string()));
-        assert!(!manual.contains(&"--write-auto-subs".to_string()));
+    #[test]
+    fn auto_tracks_need_the_auto_subs_flag() {
+        assert_eq!(write_flag(TrackKind::Auto), "--write-auto-subs");
+        assert_eq!(write_flag(TrackKind::Manual), "--write-subs");
     }
 
     #[test]

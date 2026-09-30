@@ -16,13 +16,14 @@ use contents_title_lib::ytdlp::YtDlp;
 
 const KOREAN_VIDEO: &str = "https://www.youtube.com/watch?v=SrvYHXmiLAY";
 const SHORT_VIDEO: &str = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
+const PLAYLIST: &str = "https://www.youtube.com/playlist?list=PLbpi6ZahtOH5GvM7crvM-15gZseMm3zKd";
 
 async fn ytdlp() -> YtDlp {
-    YtDlp::new(ProcessEnv::from_login_shell().await)
+    YtDlp::new(ProcessEnv::from_login_shell().await.unwrap())
 }
 
 async fn translator() -> ClaudeTranslator {
-    let env = ProcessEnv::from_login_shell().await;
+    let env = ProcessEnv::from_login_shell().await.unwrap();
     ClaudeTranslator::new(resolve_provider(&env)).unwrap()
 }
 
@@ -43,21 +44,34 @@ async fn ytdlp_fetches_metadata_and_downloads_auto_subtitle() {
 
 #[tokio::test]
 #[ignore]
-async fn ytdlp_downloads_video_without_subtitles() {
+async fn ytdlp_downloads_video_literally_named_into_any_directory() {
+    let ytdlp = ytdlp().await;
+    let meta = ytdlp.fetch_metadata(SHORT_VIDEO).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
-    let out = OutputLocation::new(dir.path().join("new dir"), "Me at the zoo?", "jNQXAC9IVRw");
+    let out = OutputLocation::new(dir.path().join("dir $HOME 100%"), "Save $HOME 100%?", &meta.id);
     let progress = std::sync::Mutex::new(Vec::new());
-    let path = ytdlp()
-        .await
-        .download_video(SHORT_VIDEO, &out, |p| progress.lock().unwrap().push(p))
+    let path = ytdlp
+        .download_video(&meta.url, &out, |p| progress.lock().unwrap().push(p))
         .await
         .unwrap();
-    let files: Vec<_> = std::fs::read_dir(out.dir()).unwrap().flatten().map(|e| e.file_name()).collect();
+    let files: Vec<String> = std::fs::read_dir(out.dir())
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
     let progress = progress.into_inner().unwrap();
     println!("video: {} / dir: {files:?} / {} progress events", path.display(), progress.len());
     assert!(path.is_file());
-    assert_eq!(files.len(), 1);
+    assert_eq!(files, [format!("Save ＄HOME 100%？ [{}].webm", meta.id)]);
     assert!(progress.last().is_some_and(|&p| p >= 99.0));
+}
+
+#[tokio::test]
+#[ignore]
+async fn ytdlp_rejects_playlists() {
+    let err = ytdlp().await.fetch_metadata(PLAYLIST).await.unwrap_err();
+    println!("{err}");
+    assert!(matches!(err, contents_title_lib::error::AppError::Unsupported(_)));
 }
 
 #[tokio::test]

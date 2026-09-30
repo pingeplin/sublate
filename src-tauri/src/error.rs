@@ -16,8 +16,14 @@ pub enum AppError {
     Api(String),
     #[error("translation failed: {0}")]
     Translation(String),
+    #[error("translation was cut off at the output limit")]
+    Truncated,
     #[error("unsupported target language: {0}")]
     UnknownLanguage(String),
+    #[error("{0}")]
+    Unsupported(String),
+    #[error("cannot read the login shell environment: {0}")]
+    Environment(String),
 }
 
 impl AppError {

@@ -1,7 +1,7 @@
 use tokio::sync::OnceCell;
 
 use crate::auth::resolve_provider;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::process_env::ProcessEnv;
 use crate::translate::claude::ClaudeTranslator;
 use crate::translate::Translator;
@@ -15,7 +15,13 @@ pub struct Services {
 
 impl Services {
     async fn load() -> AppResult<Self> {
-        let env = ProcessEnv::from_login_shell().await;
+        let env = match ProcessEnv::from_login_shell().await {
+            Ok(env) => env,
+            // Launched from a terminal, the inherited environment is already complete.
+            Err(_) if ProcessEnv::inherited().resolve("yt-dlp").is_some() => ProcessEnv::inherited(),
+            // An error is not cached, so the next command probes again.
+            Err(reason) => return Err(AppError::Environment(reason)),
+        };
         let credentials = resolve_provider(&env);
         let credential_source = credentials.describe();
         Ok(Self {

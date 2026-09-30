@@ -9,6 +9,7 @@ use crate::process_env::ProcessEnv;
 pub const DEFAULT_ANT_PROFILE: &str = "contents-title";
 const OAUTH_BETA: &str = "oauth-2025-04-20";
 const TOKEN_TTL: Duration = Duration::from_secs(60);
+const MINT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Credential {
@@ -65,12 +66,14 @@ impl AntProfile {
     }
 
     async fn mint(&self) -> AppResult<String> {
-        let output = self
+        let run = self
             .env
             .command("ant")
             .args(["--profile", &self.profile, "auth", "print-credentials", "--access-token"])
-            .output()
+            .output();
+        let output = tokio::time::timeout(MINT_TIMEOUT, run)
             .await
+            .map_err(|_| AppError::Auth(format!("`ant` did not respond within {}s", MINT_TIMEOUT.as_secs())))?
             .map_err(|e| AppError::Auth(format!("cannot run `ant`: {e}")))?;
         let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if output.status.success() && !token.is_empty() {

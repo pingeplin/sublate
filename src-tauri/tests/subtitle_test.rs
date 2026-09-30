@@ -76,3 +76,30 @@ fn leading_empty_cues_extend_the_next_cue_backwards() {
 fn all_empty_cues_yield_nothing() {
     assert!(absorb_empty_cues(vec![cue(0, 1000, "")]).is_empty());
 }
+
+#[test]
+fn whitespace_only_separators_do_not_merge_cues() {
+    let srt = "1\n00:00:01,000 --> 00:00:02,000\nHello\n \n2\n00:00:03,000 --> 00:00:04,000\nBye\n\t\n";
+    assert_eq!(parse_srt(srt).unwrap(), [cue(1000, 2000, "Hello"), cue(3000, 4000, "Bye")]);
+}
+
+#[test]
+fn numeric_cue_text_is_kept() {
+    let srt = "1\n00:00:01,000 --> 00:00:02,000\n2024\n\n2\n00:00:03,000 --> 00:00:04,000\nBye\n";
+    assert_eq!(parse_srt(srt).unwrap(), [cue(1000, 2000, "2024"), cue(3000, 4000, "Bye")]);
+}
+
+#[test]
+fn serializer_drops_blank_lines_inside_cue_text() {
+    let cues = [cue(0, 1000, "\n第一句\n\n 第二句 \n"), cue(1000, 2000, "下一句")];
+    assert_eq!(
+        parse_srt(&to_srt(&cues)).unwrap(),
+        [cue(0, 1000, "第一句\n第二句"), cue(1000, 2000, "下一句")]
+    );
+}
+
+#[test]
+fn collapse_tolerates_leading_empty_cue() {
+    let cues = vec![cue(0, 500, ""), cue(500, 1000, "A"), cue(1000, 1010, "A")];
+    assert_eq!(collapse_rolling(cues), [cue(500, 1000, "A")]);
+}

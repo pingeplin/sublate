@@ -7,39 +7,46 @@ pub struct Cue {
     pub text: String,
 }
 
+/// Cues are anchored on their timing lines, so blank separators (even whitespace-only ones)
+/// and the whitespace-only lines inside YouTube cues are both tolerated.
 pub fn parse_srt(input: &str) -> AppResult<Vec<Cue>> {
-    let mut cues = Vec::new();
-    let mut lines = input.trim_start_matches('\u{feff}').lines();
-    while let Some(line) = lines.next() {
-        let Some((start, end)) = line.split_once("-->") else {
-            continue;
-        };
-        let text = lines
-            .by_ref()
-            .take_while(|l| !l.is_empty())
-            .map(str::trim)
-            .filter(|l| !l.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        cues.push(Cue {
-            start_ms: parse_timestamp(start)?,
-            end_ms: parse_timestamp(end)?,
-            text,
-        });
-    }
-    Ok(cues)
+    let lines: Vec<&str> = input.trim_start_matches('\u{feff}').lines().collect();
+    let timings: Vec<usize> = (0..lines.len()).filter(|&i| lines[i].contains("-->")).collect();
+    timings
+        .iter()
+        .enumerate()
+        .map(|(k, &at)| {
+            let next = timings.get(k + 1).copied();
+            let mut body: Vec<&str> = lines[at + 1..next.unwrap_or(lines.len())]
+                .iter()
+                .map(|l| l.trim())
+                .filter(|l| !l.is_empty())
+                .collect();
+            if next.is_some() && body.last().is_some_and(|l| is_index(l)) {
+                body.pop();
+            }
+            let (start, end) = lines[at].split_once("-->").expect("timing line contains -->");
+            Ok(Cue {
+                start_ms: parse_timestamp(start)?,
+                end_ms: parse_timestamp(end)?,
+                text: body.join("\n"),
+            })
+        })
+        .collect()
 }
 
+/// Blank lines end a cue in SRT, so they never make it into cue text.
 pub fn to_srt(cues: &[Cue]) -> String {
     cues.iter()
         .enumerate()
         .map(|(i, cue)| {
+            let text: Vec<&str> = cue.text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
             format!(
                 "{}\n{} --> {}\n{}\n",
                 i + 1,
                 format_timestamp(cue.start_ms),
                 format_timestamp(cue.end_ms),
-                cue.text
+                text.join("\n")
             )
         })
         .collect::<Vec<_>>()
@@ -53,7 +60,7 @@ pub fn collapse_rolling(cues: Vec<Cue>) -> Vec<Cue> {
     let mut previous_line: Option<String> = None;
     for cue in cues {
         let mut lines: Vec<&str> = cue.text.lines().collect();
-        if lines.first().copied() == previous_line.as_deref() {
+        if lines.first().is_some_and(|&first| Some(first) == previous_line.as_deref()) {
             lines.remove(0);
         }
         let Some(last) = lines.last() else {
@@ -86,6 +93,10 @@ pub fn absorb_empty_cues(cues: Vec<Cue>) -> Vec<Cue> {
         out.push(Cue { start_ms, ..cue });
     }
     out
+}
+
+fn is_index(line: &str) -> bool {
+    line.bytes().all(|b| b.is_ascii_digit())
 }
 
 fn parse_timestamp(raw: &str) -> AppResult<u64> {

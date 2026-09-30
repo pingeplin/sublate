@@ -205,3 +205,45 @@ async fn subtitle_file_job_normalizes_punctuation_for_the_target_language() {
         assert_eq!(written[0].text, expected, "target {target}");
     }
 }
+
+/// Cuts off any batch larger than two lines, like a response hitting max_tokens.
+#[derive(Default)]
+struct TruncatingTranslator {
+    batch_sizes: Mutex<Vec<usize>>,
+}
+
+#[async_trait]
+impl Translator for TruncatingTranslator {
+    async fn translate(&self, r: BatchRequest<'_>) -> AppResult<Vec<String>> {
+        self.batch_sizes.lock().unwrap().push(r.lines.len());
+        if r.lines.len() > 2 {
+            return Err(AppError::Truncated);
+        }
+        Ok(r.lines.iter().map(|l| l.to_uppercase()).collect())
+    }
+}
+
+#[tokio::test]
+async fn truncated_batches_are_split_instead_of_resent() {
+    let translator = TruncatingTranslator::default();
+    let out = translate_cues(&translator, &cues(7), "a", "b", plan(7, 1), |_, _| {}).await.unwrap();
+
+    let texts: Vec<&str> = out.iter().map(|c| c.text.as_str()).collect();
+    assert_eq!(texts, ["LINE 0", "LINE 1", "LINE 2", "LINE 3", "LINE 4", "LINE 5", "LINE 6"]);
+    assert_eq!(translator.batch_sizes.into_inner().unwrap(), [7, 3, 1, 2, 4, 2, 2]);
+}
+
+struct AlwaysTruncated;
+
+#[async_trait]
+impl Translator for AlwaysTruncated {
+    async fn translate(&self, _: BatchRequest<'_>) -> AppResult<Vec<String>> {
+        Err(AppError::Truncated)
+    }
+}
+
+#[tokio::test]
+async fn a_single_truncated_line_is_an_error() {
+    let err = translate_cues(&AlwaysTruncated, &cues(2), "a", "b", plan(10, 1), |_, _| {}).await.unwrap_err();
+    assert!(matches!(err, AppError::Truncated));
+}

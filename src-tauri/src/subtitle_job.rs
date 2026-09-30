@@ -30,7 +30,7 @@ pub async fn download_and_translate(
     on_progress: impl Fn(usize, usize) + Sync,
 ) -> AppResult<SubtitleOutput> {
     let source_path = ytdlp.download_subtitle(url, out, track).await?;
-    let translated_path = out.subtitle(target.code);
+    let translated_path = out.translation(&track.code, target.code);
     let cue_count =
         translate_subtitle_file(translator, &source_path, track, target, &translated_path, on_progress)
             .await?;

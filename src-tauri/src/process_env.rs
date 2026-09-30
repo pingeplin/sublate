@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
 
+use tokio::io::AsyncReadExt;
+
 const MARKER: &str = "__CONTENTS_TITLE_ENV__";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -14,9 +16,14 @@ pub struct ProcessEnv {
 }
 
 impl ProcessEnv {
-    pub async fn from_login_shell() -> Self {
-        let shell = login_shell_vars().await.unwrap_or_default();
-        Self::merge(shell, std::env::vars().collect())
+    pub async fn from_login_shell() -> Result<Self, String> {
+        Ok(Self::merge(login_shell_vars().await?, inherited_vars()))
+    }
+
+    pub fn inherited() -> Self {
+        Self {
+            vars: inherited_vars(),
+        }
     }
 
     #[cfg(test)]
@@ -57,26 +64,59 @@ impl ProcessEnv {
     }
 }
 
-async fn login_shell_vars() -> Option<HashMap<String, String>> {
+/// Non-UTF-8 variables are skipped here; child processes still inherit them untouched.
+fn inherited_vars() -> HashMap<String, String> {
+    std::env::vars_os()
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+        .collect()
+}
+
+async fn login_shell_vars() -> Result<HashMap<String, String>, String> {
     if !cfg!(unix) {
-        return None;
+        return Ok(HashMap::new());
     }
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    probe_shell(&shell).await
+}
+
+async fn probe_shell(shell: &str) -> Result<HashMap<String, String>, String> {
     let script = format!("printf {MARKER}; env -0; printf {MARKER}");
-    let probe = tokio::process::Command::new(shell)
+    let mut child = tokio::process::Command::new(shell)
         .args(["-ilc", &script])
         .stdin(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true)
-        .output();
-    let output = tokio::time::timeout(PROBE_TIMEOUT, probe).await.ok()?.ok()?;
-    parse_env_block(&output.stdout)
+        .spawn()
+        .map_err(|e| format!("cannot start {shell}: {e}"))?;
+    let mut stdout = child.stdout.take().expect("stdout is piped");
+    // Stop at the closing marker: rc files may leave background jobs holding stdout open.
+    let read = async {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            let n = stdout.read(&mut chunk).await.map_err(|e| e.to_string())?;
+            buf.extend_from_slice(&chunk[..n]);
+            if let Some(vars) = parse_env_block(&buf) {
+                return Ok(vars);
+            }
+            if n == 0 {
+                return Err(format!("{shell} printed no environment"));
+            }
+        }
+    };
+    tokio::time::timeout(PROBE_TIMEOUT, read)
+        .await
+        .map_err(|_| format!("{shell} did not respond within {}s", PROBE_TIMEOUT.as_secs()))?
 }
 
 /// Shell rc files may print banners, so the NUL-separated `env -0` block is fenced by markers.
 fn parse_env_block(stdout: &[u8]) -> Option<HashMap<String, String>> {
     let text = String::from_utf8_lossy(stdout);
-    let block = text.split(MARKER).nth(1)?;
+    let mut parts = text.split(MARKER);
+    parts.next()?;
+    let block = parts.next()?;
+    parts.next()?;
     Some(
         block
             .split('\0')
@@ -115,6 +155,22 @@ mod tests {
             Some(map(&[("PATH", "/a:/b"), ("KEY", "x=y")]))
         );
         assert_eq!(parse_env_block(b"no markers"), None);
+        let unterminated = format!("{MARKER}PATH=/a\0");
+        assert_eq!(parse_env_block(unterminated.as_bytes()), None);
+    }
+
+    #[tokio::test]
+    async fn probe_returns_at_closing_marker_even_if_stdout_stays_open() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let shell = dir.path().join("fake-shell");
+        std::fs::write(&shell, format!("#!/bin/sh\nprintf 'banner{MARKER}A=1\\0{MARKER}'\nsleep 30\n")).unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let started = std::time::Instant::now();
+        let vars = probe_shell(shell.to_str().unwrap()).await.unwrap();
+        assert_eq!(vars, map(&[("A", "1")]));
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 mod common;
 
 use common::{fixture, ko_auto_track};
+use contents_title_lib::error::AppError;
 use contents_title_lib::metadata::{parse_metadata, SubtitleTrack, TrackKind};
 
 #[test]
@@ -61,4 +62,14 @@ fn language_name_keeps_qualifiers_but_drops_original_marker() {
     let track = |name: &str| SubtitleTrack { code: "x".into(), name: name.into(), kind: TrackKind::Manual };
     assert_eq!(track("Chinese (Traditional)").language_name(), "Chinese (Traditional)");
     assert_eq!(track("English").language_name(), "English");
+}
+
+#[test]
+fn playlists_are_rejected() {
+    for kind in ["playlist", "multi_video"] {
+        let json = format!(r#"{{ "_type": "{kind}", "id": "PL1", "title": "List", "entries": [] }}"#);
+        assert!(matches!(parse_metadata(&json, "u"), Err(AppError::Unsupported(_))));
+    }
+    let video = r#"{ "_type": "video", "id": "x", "title": "t" }"#;
+    assert!(parse_metadata(video, "u").is_ok());
 }
