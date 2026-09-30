@@ -26,7 +26,7 @@ Files land in `~/Downloads/contents-title/` by default, named `<title> [<id>]` s
 
 | File | Content |
 | --- | --- |
-| `<title> [<id>].<ext>` | Video in yt-dlp's best format (usually `.webm`/`.mkv`; play with IINA or VLC), no embedded subtitles |
+| `<title> [<id>].mp4` | Best-quality streams copied into mp4 (no re-encode) with the YouTube thumbnail as cover art, so Finder/Quick Look previews show it; no embedded subtitles. AV1 videos need VLC or IINA. |
 | `<title> [<id>].<src>.srt` | Source subtitle as downloaded (e.g. `ko-orig`) |
 | `<title> [<id>].<target>.srt` | Translated subtitle (e.g. `zh-TW`; `.<target>.translated.srt` when source and target codes match) |
 

@@ -18,13 +18,16 @@ const KOREAN_VIDEO: &str = "https://www.youtube.com/watch?v=SrvYHXmiLAY";
 const SHORT_VIDEO: &str = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
 const PLAYLIST: &str = "https://www.youtube.com/playlist?list=PLbpi6ZahtOH5GvM7crvM-15gZseMm3zKd";
 
+async fn env() -> ProcessEnv {
+    ProcessEnv::from_login_shell().await.unwrap()
+}
+
 async fn ytdlp() -> YtDlp {
-    YtDlp::new(ProcessEnv::from_login_shell().await.unwrap())
+    YtDlp::new(env().await)
 }
 
 async fn translator() -> ClaudeTranslator {
-    let env = ProcessEnv::from_login_shell().await.unwrap();
-    ClaudeTranslator::new(resolve_provider(&env)).unwrap()
+    ClaudeTranslator::new(resolve_provider(&env().await)).unwrap()
 }
 
 #[tokio::test]
@@ -62,7 +65,18 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
     let progress = progress.into_inner().unwrap();
     println!("video: {} / dir: {files:?} / {} progress events", path.display(), progress.len());
     assert!(path.is_file());
-    assert_eq!(files, [format!("Save ＄HOME 100%？ [{}].webm", meta.id)]);
+    assert_eq!(files, [format!("Save ＄HOME 100%？ [{}].mp4", meta.id)]);
+    let probe = env()
+        .await
+        .command("ffprobe")
+        .args(["-v", "error", "-show_entries", "stream=codec_type:stream_disposition=attached_pic", "-of", "compact"])
+        .arg(&path)
+        .output()
+        .await
+        .unwrap();
+    let streams = String::from_utf8_lossy(&probe.stdout);
+    println!("{streams}");
+    assert!(streams.contains("attached_pic=1"), "cover art embedded");
     assert!(progress.last().is_some_and(|&p| p >= 99.0));
 }
 

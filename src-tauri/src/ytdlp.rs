@@ -56,7 +56,17 @@ impl YtDlp {
     ) -> AppResult<PathBuf> {
         let progress = format!("download:{PROGRESS_TAG} %(progress._percent)s");
         let path = format!("after_move:{PATH_TAG} %(filepath)s");
-        let flags = ["--newline", "--progress", "--progress-template", &progress, "--print", &path];
+        // Always an mp4 carrying the thumbnail as cover art, so Quick Look (Finder, open
+        // dialogs) previews it and players show the cover. mp4 is forced because yt-dlp's
+        // `mp4/mkv` fallback picks mkv whenever the audio is Opus. Streams are copied at best
+        // quality rather than selected for H.264 (yt-dlp's `-t mp4` preset, capped near
+        // 1080p), so AV1/VP9 videos still need VLC or IINA instead of QuickTime.
+        #[rustfmt::skip]
+        let flags = [
+            "--newline", "--progress", "--progress-template", &progress, "--print", &path,
+            "--merge-output-format", "mp4", "--remux-video", "mp4",
+            "--embed-thumbnail", "--convert-thumbnails", "jpg",
+        ];
         let stdout = self
             .download(url, out, &flags, |line| {
                 if let Some(percent) = tagged(line, PROGRESS_TAG).and_then(|v| v.parse().ok()) {
