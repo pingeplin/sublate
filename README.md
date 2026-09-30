@@ -22,7 +22,7 @@ pnpm tauri dev
 
 ## Output
 
-Files land in `~/Downloads/contents-title/` by default, named `<title> [<id>]` so same-titled videos never collide (reserved characters such as `? / : $` become full-width look-alikes; the id alone is used if the title is empty):
+Files land in `~/Downloads/contents-title/` by default, named `<title> [<id>]` so same-titled videos never collide (reserved characters such as `? / : $` become full-width look-alikes; the id alone is used if the title is empty). Long titles are shortened so every name stays within 255 bytes in decomposed (NFD) UTF-8, the limit Synology Drive enforces:
 
 | File | Content |
 | --- | --- |

@@ -1,8 +1,14 @@
 use std::path::{Path, PathBuf};
 
-/// Longest stem that leaves room for suffixes such as ".ko-orig.srt" and yt-dlp's
-/// intermediate ".f401.webm.part" under the 255-unit name limit.
-const MAX_STEM: usize = 200;
+use unicode_normalization::char::decompose_canonical;
+
+/// Names are measured as UTF-8 bytes after NFD decomposition, which is how Synology Drive's
+/// File Provider sees them (Hangul splits into jamo); that is stricter than APFS or ext4.
+const MAX_NAME_BYTES: usize = 255;
+/// Room for the longest suffix: subtitle codes such as ".ko-FmoQciUtYSc.srt",
+/// ".zh-TW.translated.srt", and yt-dlp's intermediate ".f401.webm.part".
+const SUFFIX_RESERVE: usize = 40;
+const MAX_STEM: usize = MAX_NAME_BYTES - SUFFIX_RESERVE;
 
 /// `<title> [<id>]`: readable, and unique per video so same-titled videos never share files.
 pub fn file_stem(title: &str, id: &str) -> String {
@@ -87,13 +93,11 @@ fn trim_edges(s: &str) -> &str {
     s.trim_matches(|c: char| c == '.' || c.is_whitespace())
 }
 
-/// Name-length units: Linux filesystems count bytes; APFS and NTFS count UTF-16 units.
+/// UTF-8 bytes of the character after canonical (NFD) decomposition.
 fn name_units(c: char) -> usize {
-    if cfg!(target_os = "linux") {
-        c.len_utf8()
-    } else {
-        c.len_utf16()
-    }
+    let mut bytes = 0;
+    decompose_canonical(c, |part| bytes += part.len_utf8());
+    bytes
 }
 
 fn truncate(s: &str, max: usize) -> &str {
@@ -147,15 +151,33 @@ mod tests {
         assert_eq!(file_stem(" .. ", "abc123"), "abc123");
     }
 
+    fn nfd_bytes(s: &str) -> usize {
+        s.chars().map(name_units).sum()
+    }
+
     #[test]
-    fn keeps_full_length_korean_titles() {
-        assert_eq!(title_part(&file_stem(&"한".repeat(100), "id")), "한".repeat(100));
+    fn measures_names_in_decomposed_utf8_bytes() {
+        assert_eq!(nfd_bytes("a"), 1);
+        assert_eq!(nfd_bytes("한"), 9);
+        assert_eq!(nfd_bytes("가"), 6);
+        assert_eq!(nfd_bytes("é"), 3);
+    }
+
+    #[test]
+    fn long_korean_titles_fit_synology_with_any_suffix() {
+        let title = "[ENG⧸JP] 김채원, 너 내 도도독.. 더블유 동료가 돼라❣️ 르세라핌 채원의 매력 가~득 애교살 셀프 메이크업 손민수 꿀팁 대공개🌟 by W Korea";
+        assert_eq!(nfd_bytes(title), 367);
+        let stem = file_stem(title, "kGCLG-lxHiI");
+        assert_eq!(stem, "[ENG⧸JP] 김채원, 너 내 도도독.. 더블유 동료가 돼라❣️ 르세라핌 채원의 매 [kGCLG-lxHiI]");
+        for suffix in [".mp4", ".ko-FmoQciUtYSc.srt", ".zh-TW.translated.srt", ".f401.webm.part"] {
+            assert!(nfd_bytes(&format!("{stem}{suffix}")) <= MAX_NAME_BYTES, "{suffix}");
+        }
     }
 
     #[test]
     fn truncates_title_but_keeps_id_within_limit() {
         let stem = file_stem(&"😀".repeat(150), "id");
-        assert!(stem.chars().map(name_units).sum::<usize>() <= MAX_STEM);
+        assert!(nfd_bytes(&stem) <= MAX_STEM);
         assert!(title_part(&stem).chars().all(|c| c == '😀'));
     }
 
