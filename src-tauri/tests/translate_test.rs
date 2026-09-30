@@ -65,7 +65,7 @@ fn plan(batch_size: usize, concurrency: usize) -> TranslationPlan {
 }
 
 #[tokio::test]
-async fn translates_every_cue_in_order_preserving_timing() {
+async fn translates_every_cue_in_order_reporting_progress_in_cues() {
     let source = cues(7);
     let progress = Mutex::new(Vec::new());
     let out = translate_cues(&UppercaseTranslator::default(), &source, "Korean", "English", plan(3, 3), |d, t| {
@@ -79,9 +79,11 @@ async fn translates_every_cue_in_order_preserving_timing() {
         assert_eq!((src.start_ms, src.end_ms), (dst.start_ms, dst.end_ms));
         assert_eq!(dst.text, src.text.to_uppercase());
     }
-    let mut progress = progress.into_inner().unwrap();
-    progress.sort();
-    assert_eq!(progress, [(1, 3), (2, 3), (3, 3)]);
+    let progress = progress.into_inner().unwrap();
+    assert_eq!(progress.first(), Some(&(0, 7)));
+    assert_eq!(progress.last(), Some(&(7, 7)));
+    assert_eq!(progress.len(), 4);
+    assert!(progress.windows(2).all(|w| w[0].0 < w[1].0 && w[1].1 == 7));
 }
 
 #[tokio::test]

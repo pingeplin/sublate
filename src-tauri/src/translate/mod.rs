@@ -51,10 +51,12 @@ pub async fn translate_cues(
 ) -> AppResult<Vec<Cue>> {
     let lines: Vec<String> = cues.iter().map(|c| c.text.clone()).collect();
     let batch_size = plan.batch_size.max(1);
-    let total = lines.len().div_ceil(batch_size);
+    let batches = lines.len().div_ceil(batch_size);
+    let total = lines.len();
     let done = AtomicUsize::new(0);
+    on_progress(0, total);
 
-    let translated: Vec<Vec<String>> = futures::stream::iter(0..total)
+    let translated: Vec<Vec<String>> = futures::stream::iter(0..batches)
         .map(|batch| {
             let start = batch * batch_size;
             let end = (start + batch_size).min(lines.len());
@@ -68,7 +70,8 @@ pub async fn translate_cues(
             let on_progress = &on_progress;
             async move {
                 let result = translate_with_retry(translator, request, plan.max_attempts).await?;
-                on_progress(done.fetch_add(1, Ordering::SeqCst) + 1, total);
+                let count = result.len();
+                on_progress(done.fetch_add(count, Ordering::SeqCst) + count, total);
                 Ok::<_, AppError>(result)
             }
         })

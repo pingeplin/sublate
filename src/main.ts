@@ -113,9 +113,9 @@ function onJobEvent(e: JobEvent) {
       ui.subLabel.textContent = "Translating";
       break;
     case "translationProgress":
-      ui.subBar.max = e.data.total;
+      ui.subBar.max = Math.max(e.data.total, 1);
       ui.subBar.value = e.data.done;
-      ui.subLabel.textContent = `Translating ${e.data.done}/${e.data.total}`;
+      ui.subLabel.textContent = `Translating ${e.data.done}/${e.data.total} cues`;
       break;
   }
 }

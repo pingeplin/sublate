@@ -85,7 +85,7 @@ async fn claude_translates_full_auto_caption_file() {
         find_target("zh-TW").unwrap(),
         &output,
         TranslationPlan::default(),
-        |done, total| println!("batch {done}/{total}"),
+        |done, total| println!("translated {done}/{total} cues"),
     )
     .await
     .unwrap();
