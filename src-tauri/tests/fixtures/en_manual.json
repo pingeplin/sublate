@@ -1,0 +1,45 @@
+{
+ "id": "jNQXAC9IVRw",
+ "title": "Me at the zoo",
+ "thumbnail": "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg?sqp=-oaymwEmCOADEOgC8quKqQMa8AEB-AG-AoAC8AGKAgwIABABGFUgWShlMA8=&rs=AOn4CLA9eLBatYv9WbkD4BbZ2Im-biSPTw",
+ "duration": 19,
+ "webpage_url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+ "extractor": "youtube",
+ "language": null,
+ "subtitles": {
+  "en": [
+   {
+    "ext": "srt",
+    "name": "English"
+   },
+   {
+    "ext": "vtt",
+    "name": "English"
+   }
+  ],
+  "de": [
+   {
+    "ext": "srt",
+    "name": "German"
+   },
+   {
+    "ext": "vtt",
+    "name": "German"
+   }
+  ]
+ },
+ "automatic_captions": {
+  "en": [
+   {
+    "ext": "vtt",
+    "name": null
+   }
+  ],
+  "de": [
+   {
+    "ext": "vtt",
+    "name": null
+   }
+  ]
+ }
+}

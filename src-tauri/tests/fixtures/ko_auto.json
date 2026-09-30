@@ -1,0 +1,1582 @@
+{
+ "id": "SrvYHXmiLAY",
+ "title": "[자막뉴스] 월급빼고 다 올랐다...한국은행의 결정은? / YTN",
+ "thumbnail": "https://i.ytimg.com/vi/SrvYHXmiLAY/maxresdefault.jpg",
+ "duration": 108,
+ "webpage_url": "https://www.youtube.com/watch?v=SrvYHXmiLAY",
+ "extractor": "youtube",
+ "language": "ko",
+ "subtitles": {},
+ "automatic_captions": {
+  "ab": [
+   {
+    "ext": "srt",
+    "name": "Abkhazian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Abkhazian"
+   }
+  ],
+  "aa": [
+   {
+    "ext": "srt",
+    "name": "Afar"
+   },
+   {
+    "ext": "vtt",
+    "name": "Afar"
+   }
+  ],
+  "af": [
+   {
+    "ext": "srt",
+    "name": "Afrikaans"
+   },
+   {
+    "ext": "vtt",
+    "name": "Afrikaans"
+   }
+  ],
+  "ak": [
+   {
+    "ext": "srt",
+    "name": "Akan"
+   },
+   {
+    "ext": "vtt",
+    "name": "Akan"
+   }
+  ],
+  "sq": [
+   {
+    "ext": "srt",
+    "name": "Albanian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Albanian"
+   }
+  ],
+  "am": [
+   {
+    "ext": "srt",
+    "name": "Amharic"
+   },
+   {
+    "ext": "vtt",
+    "name": "Amharic"
+   }
+  ],
+  "ar": [
+   {
+    "ext": "srt",
+    "name": "Arabic"
+   },
+   {
+    "ext": "vtt",
+    "name": "Arabic"
+   }
+  ],
+  "hy": [
+   {
+    "ext": "srt",
+    "name": "Armenian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Armenian"
+   }
+  ],
+  "as": [
+   {
+    "ext": "srt",
+    "name": "Assamese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Assamese"
+   }
+  ],
+  "ay": [
+   {
+    "ext": "srt",
+    "name": "Aymara"
+   },
+   {
+    "ext": "vtt",
+    "name": "Aymara"
+   }
+  ],
+  "az": [
+   {
+    "ext": "srt",
+    "name": "Azerbaijani"
+   },
+   {
+    "ext": "vtt",
+    "name": "Azerbaijani"
+   }
+  ],
+  "bn": [
+   {
+    "ext": "srt",
+    "name": "Bangla"
+   },
+   {
+    "ext": "vtt",
+    "name": "Bangla"
+   }
+  ],
+  "ba": [
+   {
+    "ext": "srt",
+    "name": "Bashkir"
+   },
+   {
+    "ext": "vtt",
+    "name": "Bashkir"
+   }
+  ],
+  "eu": [
+   {
+    "ext": "srt",
+    "name": "Basque"
+   },
+   {
+    "ext": "vtt",
+    "name": "Basque"
+   }
+  ],
+  "be": [
+   {
+    "ext": "srt",
+    "name": "Belarusian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Belarusian"
+   }
+  ],
+  "bho": [
+   {
+    "ext": "srt",
+    "name": "Bhojpuri"
+   },
+   {
+    "ext": "vtt",
+    "name": "Bhojpuri"
+   }
+  ],
+  "bs": [
+   {
+    "ext": "srt",
+    "name": "Bosnian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Bosnian"
+   }
+  ],
+  "br": [
+   {
+    "ext": "srt",
+    "name": "Breton"
+   },
+   {
+    "ext": "vtt",
+    "name": "Breton"
+   }
+  ],
+  "bg": [
+   {
+    "ext": "srt",
+    "name": "Bulgarian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Bulgarian"
+   }
+  ],
+  "my": [
+   {
+    "ext": "srt",
+    "name": "Burmese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Burmese"
+   }
+  ],
+  "ca": [
+   {
+    "ext": "srt",
+    "name": "Catalan"
+   },
+   {
+    "ext": "vtt",
+    "name": "Catalan"
+   }
+  ],
+  "ceb": [
+   {
+    "ext": "srt",
+    "name": "Cebuano"
+   },
+   {
+    "ext": "vtt",
+    "name": "Cebuano"
+   }
+  ],
+  "zh-Hans": [
+   {
+    "ext": "srt",
+    "name": "Chinese (Simplified)"
+   },
+   {
+    "ext": "vtt",
+    "name": "Chinese (Simplified)"
+   }
+  ],
+  "zh-Hant": [
+   {
+    "ext": "srt",
+    "name": "Chinese (Traditional)"
+   },
+   {
+    "ext": "vtt",
+    "name": "Chinese (Traditional)"
+   }
+  ],
+  "co": [
+   {
+    "ext": "srt",
+    "name": "Corsican"
+   },
+   {
+    "ext": "vtt",
+    "name": "Corsican"
+   }
+  ],
+  "hr": [
+   {
+    "ext": "srt",
+    "name": "Croatian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Croatian"
+   }
+  ],
+  "cs": [
+   {
+    "ext": "srt",
+    "name": "Czech"
+   },
+   {
+    "ext": "vtt",
+    "name": "Czech"
+   }
+  ],
+  "da": [
+   {
+    "ext": "srt",
+    "name": "Danish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Danish"
+   }
+  ],
+  "dv": [
+   {
+    "ext": "srt",
+    "name": "Divehi"
+   },
+   {
+    "ext": "vtt",
+    "name": "Divehi"
+   }
+  ],
+  "nl": [
+   {
+    "ext": "srt",
+    "name": "Dutch"
+   },
+   {
+    "ext": "vtt",
+    "name": "Dutch"
+   }
+  ],
+  "dz": [
+   {
+    "ext": "srt",
+    "name": "Dzongkha"
+   },
+   {
+    "ext": "vtt",
+    "name": "Dzongkha"
+   }
+  ],
+  "en": [
+   {
+    "ext": "srt",
+    "name": "English"
+   },
+   {
+    "ext": "vtt",
+    "name": "English"
+   }
+  ],
+  "eo": [
+   {
+    "ext": "srt",
+    "name": "Esperanto"
+   },
+   {
+    "ext": "vtt",
+    "name": "Esperanto"
+   }
+  ],
+  "et": [
+   {
+    "ext": "srt",
+    "name": "Estonian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Estonian"
+   }
+  ],
+  "ee": [
+   {
+    "ext": "srt",
+    "name": "Ewe"
+   },
+   {
+    "ext": "vtt",
+    "name": "Ewe"
+   }
+  ],
+  "fo": [
+   {
+    "ext": "srt",
+    "name": "Faroese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Faroese"
+   }
+  ],
+  "fj": [
+   {
+    "ext": "srt",
+    "name": "Fijian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Fijian"
+   }
+  ],
+  "fil": [
+   {
+    "ext": "srt",
+    "name": "Filipino"
+   },
+   {
+    "ext": "vtt",
+    "name": "Filipino"
+   }
+  ],
+  "fi": [
+   {
+    "ext": "srt",
+    "name": "Finnish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Finnish"
+   }
+  ],
+  "fr": [
+   {
+    "ext": "srt",
+    "name": "French"
+   },
+   {
+    "ext": "vtt",
+    "name": "French"
+   }
+  ],
+  "gaa": [
+   {
+    "ext": "srt",
+    "name": "Ga"
+   },
+   {
+    "ext": "vtt",
+    "name": "Ga"
+   }
+  ],
+  "gl": [
+   {
+    "ext": "srt",
+    "name": "Galician"
+   },
+   {
+    "ext": "vtt",
+    "name": "Galician"
+   }
+  ],
+  "lg": [
+   {
+    "ext": "srt",
+    "name": "Ganda"
+   },
+   {
+    "ext": "vtt",
+    "name": "Ganda"
+   }
+  ],
+  "ka": [
+   {
+    "ext": "srt",
+    "name": "Georgian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Georgian"
+   }
+  ],
+  "de": [
+   {
+    "ext": "srt",
+    "name": "German"
+   },
+   {
+    "ext": "vtt",
+    "name": "German"
+   }
+  ],
+  "el": [
+   {
+    "ext": "srt",
+    "name": "Greek"
+   },
+   {
+    "ext": "vtt",
+    "name": "Greek"
+   }
+  ],
+  "gn": [
+   {
+    "ext": "srt",
+    "name": "Guarani"
+   },
+   {
+    "ext": "vtt",
+    "name": "Guarani"
+   }
+  ],
+  "gu": [
+   {
+    "ext": "srt",
+    "name": "Gujarati"
+   },
+   {
+    "ext": "vtt",
+    "name": "Gujarati"
+   }
+  ],
+  "ht": [
+   {
+    "ext": "srt",
+    "name": "Haitian Creole"
+   },
+   {
+    "ext": "vtt",
+    "name": "Haitian Creole"
+   }
+  ],
+  "ha": [
+   {
+    "ext": "srt",
+    "name": "Hausa"
+   },
+   {
+    "ext": "vtt",
+    "name": "Hausa"
+   }
+  ],
+  "haw": [
+   {
+    "ext": "srt",
+    "name": "Hawaiian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Hawaiian"
+   }
+  ],
+  "iw": [
+   {
+    "ext": "srt",
+    "name": "Hebrew"
+   },
+   {
+    "ext": "vtt",
+    "name": "Hebrew"
+   }
+  ],
+  "hi": [
+   {
+    "ext": "srt",
+    "name": "Hindi"
+   },
+   {
+    "ext": "vtt",
+    "name": "Hindi"
+   }
+  ],
+  "hmn": [
+   {
+    "ext": "srt",
+    "name": "Hmong"
+   },
+   {
+    "ext": "vtt",
+    "name": "Hmong"
+   }
+  ],
+  "hu": [
+   {
+    "ext": "srt",
+    "name": "Hungarian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Hungarian"
+   }
+  ],
+  "is": [
+   {
+    "ext": "srt",
+    "name": "Icelandic"
+   },
+   {
+    "ext": "vtt",
+    "name": "Icelandic"
+   }
+  ],
+  "ig": [
+   {
+    "ext": "srt",
+    "name": "Igbo"
+   },
+   {
+    "ext": "vtt",
+    "name": "Igbo"
+   }
+  ],
+  "id": [
+   {
+    "ext": "srt",
+    "name": "Indonesian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Indonesian"
+   }
+  ],
+  "iu": [
+   {
+    "ext": "srt",
+    "name": "Inuktitut"
+   },
+   {
+    "ext": "vtt",
+    "name": "Inuktitut"
+   }
+  ],
+  "ga": [
+   {
+    "ext": "srt",
+    "name": "Irish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Irish"
+   }
+  ],
+  "it": [
+   {
+    "ext": "srt",
+    "name": "Italian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Italian"
+   }
+  ],
+  "ja": [
+   {
+    "ext": "srt",
+    "name": "Japanese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Japanese"
+   }
+  ],
+  "jv": [
+   {
+    "ext": "srt",
+    "name": "Javanese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Javanese"
+   }
+  ],
+  "kl": [
+   {
+    "ext": "srt",
+    "name": "Kalaallisut"
+   },
+   {
+    "ext": "vtt",
+    "name": "Kalaallisut"
+   }
+  ],
+  "kn": [
+   {
+    "ext": "srt",
+    "name": "Kannada"
+   },
+   {
+    "ext": "vtt",
+    "name": "Kannada"
+   }
+  ],
+  "kk": [
+   {
+    "ext": "srt",
+    "name": "Kazakh"
+   },
+   {
+    "ext": "vtt",
+    "name": "Kazakh"
+   }
+  ],
+  "kha": [
+   {
+    "ext": "srt",
+    "name": "Khasi"
+   },
+   {
+    "ext": "vtt",
+    "name": "Khasi"
+   }
+  ],
+  "km": [
+   {
+    "ext": "srt",
+    "name": "Khmer"
+   },
+   {
+    "ext": "vtt",
+    "name": "Khmer"
+   }
+  ],
+  "rw": [
+   {
+    "ext": "srt",
+    "name": "Kinyarwanda"
+   },
+   {
+    "ext": "vtt",
+    "name": "Kinyarwanda"
+   }
+  ],
+  "ko-orig": [
+   {
+    "ext": "srt",
+    "name": "Korean (Original)"
+   },
+   {
+    "ext": "vtt",
+    "name": "Korean (Original)"
+   }
+  ],
+  "ko": [
+   {
+    "ext": "srt",
+    "name": "Korean"
+   },
+   {
+    "ext": "vtt",
+    "name": "Korean"
+   }
+  ],
+  "kri": [
+   {
+    "ext": "srt",
+    "name": "Krio"
+   },
+   {
+    "ext": "vtt",
+    "name": "Krio"
+   }
+  ],
+  "ku": [
+   {
+    "ext": "srt",
+    "name": "Kurdish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Kurdish"
+   }
+  ],
+  "ky": [
+   {
+    "ext": "srt",
+    "name": "Kyrgyz"
+   },
+   {
+    "ext": "vtt",
+    "name": "Kyrgyz"
+   }
+  ],
+  "lo": [
+   {
+    "ext": "srt",
+    "name": "Lao"
+   },
+   {
+    "ext": "vtt",
+    "name": "Lao"
+   }
+  ],
+  "la": [
+   {
+    "ext": "srt",
+    "name": "Latin"
+   },
+   {
+    "ext": "vtt",
+    "name": "Latin"
+   }
+  ],
+  "lv": [
+   {
+    "ext": "srt",
+    "name": "Latvian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Latvian"
+   }
+  ],
+  "ln": [
+   {
+    "ext": "srt",
+    "name": "Lingala"
+   },
+   {
+    "ext": "vtt",
+    "name": "Lingala"
+   }
+  ],
+  "lt": [
+   {
+    "ext": "srt",
+    "name": "Lithuanian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Lithuanian"
+   }
+  ],
+  "lua": [
+   {
+    "ext": "srt",
+    "name": "Luba-Lulua"
+   },
+   {
+    "ext": "vtt",
+    "name": "Luba-Lulua"
+   }
+  ],
+  "luo": [
+   {
+    "ext": "srt",
+    "name": "Luo"
+   },
+   {
+    "ext": "vtt",
+    "name": "Luo"
+   }
+  ],
+  "lb": [
+   {
+    "ext": "srt",
+    "name": "Luxembourgish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Luxembourgish"
+   }
+  ],
+  "mk": [
+   {
+    "ext": "srt",
+    "name": "Macedonian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Macedonian"
+   }
+  ],
+  "mg": [
+   {
+    "ext": "srt",
+    "name": "Malagasy"
+   },
+   {
+    "ext": "vtt",
+    "name": "Malagasy"
+   }
+  ],
+  "ms": [
+   {
+    "ext": "srt",
+    "name": "Malay"
+   },
+   {
+    "ext": "vtt",
+    "name": "Malay"
+   }
+  ],
+  "ml": [
+   {
+    "ext": "srt",
+    "name": "Malayalam"
+   },
+   {
+    "ext": "vtt",
+    "name": "Malayalam"
+   }
+  ],
+  "mt": [
+   {
+    "ext": "srt",
+    "name": "Maltese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Maltese"
+   }
+  ],
+  "gv": [
+   {
+    "ext": "srt",
+    "name": "Manx"
+   },
+   {
+    "ext": "vtt",
+    "name": "Manx"
+   }
+  ],
+  "mi": [
+   {
+    "ext": "srt",
+    "name": "Māori"
+   },
+   {
+    "ext": "vtt",
+    "name": "Māori"
+   }
+  ],
+  "mr": [
+   {
+    "ext": "srt",
+    "name": "Marathi"
+   },
+   {
+    "ext": "vtt",
+    "name": "Marathi"
+   }
+  ],
+  "mn": [
+   {
+    "ext": "srt",
+    "name": "Mongolian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Mongolian"
+   }
+  ],
+  "mfe": [
+   {
+    "ext": "srt",
+    "name": "Morisyen"
+   },
+   {
+    "ext": "vtt",
+    "name": "Morisyen"
+   }
+  ],
+  "ne": [
+   {
+    "ext": "srt",
+    "name": "Nepali"
+   },
+   {
+    "ext": "vtt",
+    "name": "Nepali"
+   }
+  ],
+  "new": [
+   {
+    "ext": "srt",
+    "name": "Newari"
+   },
+   {
+    "ext": "vtt",
+    "name": "Newari"
+   }
+  ],
+  "nso": [
+   {
+    "ext": "srt",
+    "name": "Northern Sotho"
+   },
+   {
+    "ext": "vtt",
+    "name": "Northern Sotho"
+   }
+  ],
+  "no": [
+   {
+    "ext": "srt",
+    "name": "Norwegian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Norwegian"
+   }
+  ],
+  "ny": [
+   {
+    "ext": "srt",
+    "name": "Nyanja"
+   },
+   {
+    "ext": "vtt",
+    "name": "Nyanja"
+   }
+  ],
+  "oc": [
+   {
+    "ext": "srt",
+    "name": "Occitan"
+   },
+   {
+    "ext": "vtt",
+    "name": "Occitan"
+   }
+  ],
+  "or": [
+   {
+    "ext": "srt",
+    "name": "Odia"
+   },
+   {
+    "ext": "vtt",
+    "name": "Odia"
+   }
+  ],
+  "om": [
+   {
+    "ext": "srt",
+    "name": "Oromo"
+   },
+   {
+    "ext": "vtt",
+    "name": "Oromo"
+   }
+  ],
+  "os": [
+   {
+    "ext": "srt",
+    "name": "Ossetic"
+   },
+   {
+    "ext": "vtt",
+    "name": "Ossetic"
+   }
+  ],
+  "pam": [
+   {
+    "ext": "srt",
+    "name": "Pampanga"
+   },
+   {
+    "ext": "vtt",
+    "name": "Pampanga"
+   }
+  ],
+  "ps": [
+   {
+    "ext": "srt",
+    "name": "Pashto"
+   },
+   {
+    "ext": "vtt",
+    "name": "Pashto"
+   }
+  ],
+  "fa": [
+   {
+    "ext": "srt",
+    "name": "Persian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Persian"
+   }
+  ],
+  "pl": [
+   {
+    "ext": "srt",
+    "name": "Polish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Polish"
+   }
+  ],
+  "pt": [
+   {
+    "ext": "srt",
+    "name": "Portuguese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Portuguese"
+   }
+  ],
+  "pt-PT": [
+   {
+    "ext": "srt",
+    "name": "Portuguese (Portugal)"
+   },
+   {
+    "ext": "vtt",
+    "name": "Portuguese (Portugal)"
+   }
+  ],
+  "pa": [
+   {
+    "ext": "srt",
+    "name": "Punjabi"
+   },
+   {
+    "ext": "vtt",
+    "name": "Punjabi"
+   }
+  ],
+  "qu": [
+   {
+    "ext": "srt",
+    "name": "Quechua"
+   },
+   {
+    "ext": "vtt",
+    "name": "Quechua"
+   }
+  ],
+  "ro": [
+   {
+    "ext": "srt",
+    "name": "Romanian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Romanian"
+   }
+  ],
+  "rn": [
+   {
+    "ext": "srt",
+    "name": "Rundi"
+   },
+   {
+    "ext": "vtt",
+    "name": "Rundi"
+   }
+  ],
+  "ru": [
+   {
+    "ext": "srt",
+    "name": "Russian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Russian"
+   }
+  ],
+  "sm": [
+   {
+    "ext": "srt",
+    "name": "Samoan"
+   },
+   {
+    "ext": "vtt",
+    "name": "Samoan"
+   }
+  ],
+  "sg": [
+   {
+    "ext": "srt",
+    "name": "Sango"
+   },
+   {
+    "ext": "vtt",
+    "name": "Sango"
+   }
+  ],
+  "sa": [
+   {
+    "ext": "srt",
+    "name": "Sanskrit"
+   },
+   {
+    "ext": "vtt",
+    "name": "Sanskrit"
+   }
+  ],
+  "gd": [
+   {
+    "ext": "srt",
+    "name": "Scottish Gaelic"
+   },
+   {
+    "ext": "vtt",
+    "name": "Scottish Gaelic"
+   }
+  ],
+  "sr": [
+   {
+    "ext": "srt",
+    "name": "Serbian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Serbian"
+   }
+  ],
+  "crs": [
+   {
+    "ext": "srt",
+    "name": "Seselwa Creole French"
+   },
+   {
+    "ext": "vtt",
+    "name": "Seselwa Creole French"
+   }
+  ],
+  "sn": [
+   {
+    "ext": "srt",
+    "name": "Shona"
+   },
+   {
+    "ext": "vtt",
+    "name": "Shona"
+   }
+  ],
+  "sd": [
+   {
+    "ext": "srt",
+    "name": "Sindhi"
+   },
+   {
+    "ext": "vtt",
+    "name": "Sindhi"
+   }
+  ],
+  "si": [
+   {
+    "ext": "srt",
+    "name": "Sinhala"
+   },
+   {
+    "ext": "vtt",
+    "name": "Sinhala"
+   }
+  ],
+  "sk": [
+   {
+    "ext": "srt",
+    "name": "Slovak"
+   },
+   {
+    "ext": "vtt",
+    "name": "Slovak"
+   }
+  ],
+  "sl": [
+   {
+    "ext": "srt",
+    "name": "Slovenian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Slovenian"
+   }
+  ],
+  "so": [
+   {
+    "ext": "srt",
+    "name": "Somali"
+   },
+   {
+    "ext": "vtt",
+    "name": "Somali"
+   }
+  ],
+  "st": [
+   {
+    "ext": "srt",
+    "name": "Southern Sotho"
+   },
+   {
+    "ext": "vtt",
+    "name": "Southern Sotho"
+   }
+  ],
+  "es": [
+   {
+    "ext": "srt",
+    "name": "Spanish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Spanish"
+   }
+  ],
+  "su": [
+   {
+    "ext": "srt",
+    "name": "Sundanese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Sundanese"
+   }
+  ],
+  "sw": [
+   {
+    "ext": "srt",
+    "name": "Swahili"
+   },
+   {
+    "ext": "vtt",
+    "name": "Swahili"
+   }
+  ],
+  "ss": [
+   {
+    "ext": "srt",
+    "name": "Swati"
+   },
+   {
+    "ext": "vtt",
+    "name": "Swati"
+   }
+  ],
+  "sv": [
+   {
+    "ext": "srt",
+    "name": "Swedish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Swedish"
+   }
+  ],
+  "tg": [
+   {
+    "ext": "srt",
+    "name": "Tajik"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tajik"
+   }
+  ],
+  "ta": [
+   {
+    "ext": "srt",
+    "name": "Tamil"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tamil"
+   }
+  ],
+  "tt": [
+   {
+    "ext": "srt",
+    "name": "Tatar"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tatar"
+   }
+  ],
+  "te": [
+   {
+    "ext": "srt",
+    "name": "Telugu"
+   },
+   {
+    "ext": "vtt",
+    "name": "Telugu"
+   }
+  ],
+  "th": [
+   {
+    "ext": "srt",
+    "name": "Thai"
+   },
+   {
+    "ext": "vtt",
+    "name": "Thai"
+   }
+  ],
+  "bo": [
+   {
+    "ext": "srt",
+    "name": "Tibetan"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tibetan"
+   }
+  ],
+  "ti": [
+   {
+    "ext": "srt",
+    "name": "Tigrinya"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tigrinya"
+   }
+  ],
+  "to": [
+   {
+    "ext": "srt",
+    "name": "Tongan"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tongan"
+   }
+  ],
+  "ts": [
+   {
+    "ext": "srt",
+    "name": "Tsonga"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tsonga"
+   }
+  ],
+  "tn": [
+   {
+    "ext": "srt",
+    "name": "Tswana"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tswana"
+   }
+  ],
+  "tum": [
+   {
+    "ext": "srt",
+    "name": "Tumbuka"
+   },
+   {
+    "ext": "vtt",
+    "name": "Tumbuka"
+   }
+  ],
+  "tr": [
+   {
+    "ext": "srt",
+    "name": "Turkish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Turkish"
+   }
+  ],
+  "tk": [
+   {
+    "ext": "srt",
+    "name": "Turkmen"
+   },
+   {
+    "ext": "vtt",
+    "name": "Turkmen"
+   }
+  ],
+  "uk": [
+   {
+    "ext": "srt",
+    "name": "Ukrainian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Ukrainian"
+   }
+  ],
+  "ur": [
+   {
+    "ext": "srt",
+    "name": "Urdu"
+   },
+   {
+    "ext": "vtt",
+    "name": "Urdu"
+   }
+  ],
+  "ug": [
+   {
+    "ext": "srt",
+    "name": "Uyghur"
+   },
+   {
+    "ext": "vtt",
+    "name": "Uyghur"
+   }
+  ],
+  "uz": [
+   {
+    "ext": "srt",
+    "name": "Uzbek"
+   },
+   {
+    "ext": "vtt",
+    "name": "Uzbek"
+   }
+  ],
+  "ve": [
+   {
+    "ext": "srt",
+    "name": "Venda"
+   },
+   {
+    "ext": "vtt",
+    "name": "Venda"
+   }
+  ],
+  "vi": [
+   {
+    "ext": "srt",
+    "name": "Vietnamese"
+   },
+   {
+    "ext": "vtt",
+    "name": "Vietnamese"
+   }
+  ],
+  "war": [
+   {
+    "ext": "srt",
+    "name": "Waray"
+   },
+   {
+    "ext": "vtt",
+    "name": "Waray"
+   }
+  ],
+  "cy": [
+   {
+    "ext": "srt",
+    "name": "Welsh"
+   },
+   {
+    "ext": "vtt",
+    "name": "Welsh"
+   }
+  ],
+  "fy": [
+   {
+    "ext": "srt",
+    "name": "Western Frisian"
+   },
+   {
+    "ext": "vtt",
+    "name": "Western Frisian"
+   }
+  ],
+  "wo": [
+   {
+    "ext": "srt",
+    "name": "Wolof"
+   },
+   {
+    "ext": "vtt",
+    "name": "Wolof"
+   }
+  ],
+  "xh": [
+   {
+    "ext": "srt",
+    "name": "Xhosa"
+   },
+   {
+    "ext": "vtt",
+    "name": "Xhosa"
+   }
+  ],
+  "yi": [
+   {
+    "ext": "srt",
+    "name": "Yiddish"
+   },
+   {
+    "ext": "vtt",
+    "name": "Yiddish"
+   }
+  ],
+  "yo": [
+   {
+    "ext": "srt",
+    "name": "Yoruba"
+   },
+   {
+    "ext": "vtt",
+    "name": "Yoruba"
+   }
+  ],
+  "zu": [
+   {
+    "ext": "srt",
+    "name": "Zulu"
+   },
+   {
+    "ext": "vtt",
+    "name": "Zulu"
+   }
+  ]
+ }
+}

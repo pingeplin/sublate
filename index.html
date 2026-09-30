@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <title>Contents Title</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <main>
+      <header>
+        <h1>Contents Title</h1>
+        <span id="auth-badge" class="badge"></span>
+      </header>
+
+      <form id="url-form" class="row">
+        <input id="url" type="url" placeholder="Paste a video URL…" required autofocus />
+        <button id="fetch" type="submit">Fetch</button>
+      </form>
+
+      <p id="status" role="status"></p>
+
+      <section id="video" hidden>
+        <div class="video-head">
+          <img id="thumb" alt="" />
+          <div>
+            <h2 id="title"></h2>
+            <p id="duration" class="muted"></p>
+          </div>
+        </div>
+
+        <div class="fields">
+          <label>
+            Source subtitle
+            <select id="source"></select>
+          </label>
+          <label>
+            Target subtitle
+            <select id="target"></select>
+          </label>
+          <label class="wide">
+            Save to
+            <span class="row">
+              <input id="out-dir" readonly />
+              <button id="choose-dir" type="button" class="secondary">Choose…</button>
+            </span>
+          </label>
+          <label class="check">
+            <input id="with-video" type="checkbox" checked />
+            Download video
+          </label>
+        </div>
+
+        <button id="run" type="button">Get content</button>
+
+        <div id="progress" hidden>
+          <div class="step" id="video-step">
+            <span>Video</span>
+            <progress id="video-bar" max="100" value="0"></progress>
+          </div>
+          <div class="step" id="sub-step">
+            <span id="sub-label">Subtitles</span>
+            <progress id="sub-bar" max="1" value="0"></progress>
+          </div>
+        </div>
+
+        <ul id="results"></ul>
+      </section>
+    </main>
+  </body>
+</html>
