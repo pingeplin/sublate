@@ -8,9 +8,8 @@ pub struct Cue {
 }
 
 pub fn parse_srt(input: &str) -> AppResult<Vec<Cue>> {
-    let normalized = input.trim_start_matches('\u{feff}').replace("\r\n", "\n");
     let mut cues = Vec::new();
-    let mut lines = normalized.lines();
+    let mut lines = input.trim_start_matches('\u{feff}').lines();
     while let Some(line) = lines.next() {
         let Some((start, end)) = line.split_once("-->") else {
             continue;

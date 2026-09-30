@@ -1,8 +1,7 @@
-use contents_title_lib::subtitle::{absorb_empty_cues, collapse_rolling, parse_srt, to_srt, Cue};
+mod common;
 
-fn fixture(name: &str) -> String {
-    std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
-}
+use common::fixture;
+use contents_title_lib::subtitle::{absorb_empty_cues, collapse_rolling, parse_srt, to_srt, Cue};
 
 fn cue(start_ms: u64, end_ms: u64, text: &str) -> Cue {
     Cue { start_ms, end_ms, text: text.into() }

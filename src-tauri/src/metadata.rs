@@ -21,10 +21,10 @@ pub struct SubtitleTrack {
 }
 
 impl SubtitleTrack {
+    /// Drops yt-dlp's "(Original)" marker on spoken-language ASR tracks while keeping real
+    /// qualifiers such as "Chinese (Traditional)".
     pub fn language_name(&self) -> &str {
-        self.name
-            .split_once(" (")
-            .map_or(self.name.as_str(), |(base, _)| base)
+        self.name.strip_suffix(" (Original)").unwrap_or(&self.name)
     }
 }
 

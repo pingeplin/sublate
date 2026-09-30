@@ -56,7 +56,8 @@ pub async fn translate_cues(
     let done = AtomicUsize::new(0);
     on_progress(0, total);
 
-    let translated: Vec<Vec<String>> = futures::stream::iter(0..batches)
+    let mut translated: Vec<Vec<String>> = vec![Vec::new(); batches];
+    let mut completed = futures::stream::iter(0..batches)
         .map(|batch| {
             let start = batch * batch_size;
             let end = (start + batch_size).min(lines.len());
@@ -72,12 +73,13 @@ pub async fn translate_cues(
                 let result = translate_with_retry(translator, request, plan.max_attempts).await?;
                 let count = result.len();
                 on_progress(done.fetch_add(count, Ordering::SeqCst) + count, total);
-                Ok::<_, AppError>(result)
+                Ok::<_, AppError>((batch, result))
             }
         })
-        .buffered(plan.concurrency.max(1))
-        .try_collect()
-        .await?;
+        .buffer_unordered(plan.concurrency.max(1));
+    while let Some((batch, result)) = completed.try_next().await? {
+        translated[batch] = result;
+    }
 
     Ok(cues
         .iter()
@@ -98,7 +100,7 @@ async fn translate_with_retry(
             .await
             .and_then(|out| ensure_aligned(out, request.lines.len()));
         match result {
-            Err(AppError::Translation(_)) if attempt < max_attempts => attempt += 1,
+            Err(e) if e.is_retryable() && attempt < max_attempts => attempt += 1,
             other => return other,
         }
     }

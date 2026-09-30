@@ -1,7 +1,7 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use reqwest::header::RETRY_AFTER;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -10,7 +10,7 @@ use super::{BatchRequest, Translator};
 use crate::auth::CredentialProvider;
 use crate::error::{AppError, AppResult};
 
-pub const DEFAULT_MODEL: &str = "claude-sonnet-5-5";
+const MODEL: &str = "claude-sonnet-5-5";
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
@@ -21,21 +21,16 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
 
 pub struct ClaudeTranslator {
     http: reqwest::Client,
-    credentials: Arc<dyn CredentialProvider>,
-    model: String,
+    credentials: Box<dyn CredentialProvider>,
 }
 
 impl ClaudeTranslator {
-    pub fn new(credentials: Arc<dyn CredentialProvider>, model: impl Into<String>) -> AppResult<Self> {
+    pub fn new(credentials: Box<dyn CredentialProvider>) -> AppResult<Self> {
         let http = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .build()
             .map_err(|e| AppError::Api(e.to_string()))?;
-        Ok(Self {
-            http,
-            credentials,
-            model: model.into(),
-        })
+        Ok(Self { http, credentials })
     }
 
     async fn send(&self, body: &Value) -> AppResult<String> {
@@ -84,7 +79,7 @@ impl ClaudeTranslator {
 #[async_trait]
 impl Translator for ClaudeTranslator {
     async fn translate(&self, request: BatchRequest<'_>) -> AppResult<Vec<String>> {
-        let body = request_body(&self.model, &request);
+        let body = request_body(&request);
         let response = self.send(&body).await?;
         parse_response(&response, request.lines.len())
     }
@@ -126,7 +121,7 @@ fn output_schema() -> Value {
     })
 }
 
-fn request_body(model: &str, request: &BatchRequest<'_>) -> Value {
+fn request_body(request: &BatchRequest<'_>) -> Value {
     let items: Vec<Value> = request
         .lines
         .iter()
@@ -135,7 +130,7 @@ fn request_body(model: &str, request: &BatchRequest<'_>) -> Value {
         .collect();
     let input = json!({ "context": request.context, "items": items });
     json!({
-        "model": model,
+        "model": MODEL,
         "max_tokens": MAX_TOKENS,
         "fallbacks": "default",
         "output_config": {
@@ -229,12 +224,12 @@ fn align_by_id(items: Vec<TranslatedItem>, expected: usize) -> AppResult<Vec<Str
 }
 
 fn is_retryable(status: StatusCode) -> bool {
-    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() || status.as_u16() == 529
+    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
 fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
     resp.headers()
-        .get("retry-after")?
+        .get(RETRY_AFTER)?
         .to_str()
         .ok()?
         .parse::<u64>()
@@ -283,9 +278,9 @@ mod tests {
     fn body_numbers_items_and_requests_structured_output() {
         let lines = vec!["안녕".to_string(), "하세요".to_string()];
         let context = vec!["이전".to_string()];
-        let body = request_body(DEFAULT_MODEL, &request(&lines, &context));
+        let body = request_body(&request(&lines, &context));
 
-        assert_eq!(body["model"], DEFAULT_MODEL);
+        assert_eq!(body["model"], MODEL);
         assert_eq!(body["fallbacks"], "default");
         assert_eq!(body["output_config"]["format"]["type"], "json_schema");
         assert!(body.get("thinking").is_none());
@@ -324,14 +319,12 @@ mod tests {
         .to_string();
         let err = parse_response(&body, 1).unwrap_err();
         assert!(matches!(err, AppError::Api(ref m) if m.contains("cyber")));
+        assert!(!err.is_retryable());
     }
 
     #[test]
-    fn truncation_is_retryable_translation_error() {
-        assert!(matches!(
-            parse_response(&api_body("{", "max_tokens"), 1),
-            Err(AppError::Translation(_))
-        ));
+    fn truncation_is_retryable() {
+        assert!(parse_response(&api_body("{", "max_tokens"), 1).unwrap_err().is_retryable());
     }
 
     #[test]

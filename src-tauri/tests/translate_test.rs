@@ -1,7 +1,10 @@
+mod common;
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use common::{fixture_path, ko_auto_track};
 use contents_title_lib::error::{AppError, AppResult};
 use contents_title_lib::languages::find_target;
 use contents_title_lib::metadata::{SubtitleTrack, TrackKind};
@@ -140,13 +143,9 @@ async fn subtitle_file_job_collapses_auto_captions_and_writes_separate_srt() {
     let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("vid.ko-orig.srt");
     let output = dir.path().join("vid.zh-TW.srt");
-    std::fs::copy(
-        format!("{}/tests/fixtures/ko_auto_rolling.srt", env!("CARGO_MANIFEST_DIR")),
-        &source,
-    )
-    .unwrap();
+    std::fs::copy(fixture_path("ko_auto_rolling.srt"), &source).unwrap();
     let original = std::fs::read_to_string(&source).unwrap();
-    let track = SubtitleTrack { code: "ko-orig".into(), name: "Korean (Original)".into(), kind: TrackKind::Auto };
+    let track = ko_auto_track();
     let translator = UppercaseTranslator::default();
 
     let count = translate_subtitle_file(
@@ -155,7 +154,6 @@ async fn subtitle_file_job_collapses_auto_captions_and_writes_separate_srt() {
         &track,
         find_target("zh-TW").unwrap(),
         &output,
-        TranslationPlan::default(),
         |_, _| {},
     )
     .await
@@ -199,7 +197,6 @@ async fn subtitle_file_job_normalizes_punctuation_for_the_target_language() {
             &track,
             find_target(target).unwrap(),
             &output,
-            TranslationPlan::default(),
             |_, _| {},
         )
         .await

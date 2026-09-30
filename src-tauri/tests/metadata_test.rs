@@ -1,8 +1,7 @@
-use contents_title_lib::metadata::{parse_metadata, SubtitleTrack, TrackKind};
+mod common;
 
-fn fixture(name: &str) -> String {
-    std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
-}
+use common::{fixture, ko_auto_track};
+use contents_title_lib::metadata::{parse_metadata, SubtitleTrack, TrackKind};
 
 #[test]
 fn auto_captions_expose_only_the_spoken_language_track() {
@@ -12,14 +11,7 @@ fn auto_captions_expose_only_the_spoken_language_track() {
     assert!(meta.title.contains("한국은행"));
     assert!(meta.thumbnail.unwrap().starts_with("https://"));
     assert_eq!(meta.url, "https://www.youtube.com/watch?v=SrvYHXmiLAY");
-    assert_eq!(
-        meta.subtitles,
-        vec![SubtitleTrack {
-            code: "ko-orig".into(),
-            name: "Korean (Original)".into(),
-            kind: TrackKind::Auto,
-        }]
-    );
+    assert_eq!(meta.subtitles, vec![ko_auto_track()]);
     assert_eq!(meta.subtitles[0].language_name(), "Korean");
 }
 
@@ -62,4 +54,11 @@ fn falls_back_to_video_language_when_no_original_track() {
     assert_eq!(meta.subtitles.len(), 1);
     assert_eq!(meta.subtitles[0].code, "ja");
     assert_eq!(meta.subtitles[0].kind, TrackKind::Auto);
+}
+
+#[test]
+fn language_name_keeps_qualifiers_but_drops_original_marker() {
+    let track = |name: &str| SubtitleTrack { code: "x".into(), name: name.into(), kind: TrackKind::Manual };
+    assert_eq!(track("Chinese (Traditional)").language_name(), "Chinese (Traditional)");
+    assert_eq!(track("English").language_name(), "English");
 }

@@ -20,6 +20,14 @@ pub enum AppError {
     UnknownLanguage(String),
 }
 
+impl AppError {
+    /// Malformed or misaligned model output may succeed on a fresh attempt; transport
+    /// retries (429/5xx) happen inside the API client instead.
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::Translation(_))
+    }
+}
+
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.to_string())

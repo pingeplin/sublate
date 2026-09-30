@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -70,7 +69,6 @@ impl AntProfile {
             .env
             .command("ant")
             .args(["--profile", &self.profile, "auth", "print-credentials", "--access-token"])
-            .env_remove("ANTHROPIC_API_KEY")
             .output()
             .await
             .map_err(|e| AppError::Auth(format!("cannot run `ant`: {e}")))?;
@@ -107,13 +105,12 @@ impl CredentialProvider for AntProfile {
     }
 }
 
-pub fn resolve_provider(env: &ProcessEnv) -> Arc<dyn CredentialProvider> {
-    match std::env::var("ANTHROPIC_API_KEY") {
-        Ok(key) if !key.is_empty() => Arc::new(StaticApiKey(key)),
-        _ => {
-            let profile = std::env::var("ANTHROPIC_PROFILE")
-                .unwrap_or_else(|_| DEFAULT_ANT_PROFILE.to_string());
-            Arc::new(AntProfile::new(env.clone(), profile))
+pub fn resolve_provider(env: &ProcessEnv) -> Box<dyn CredentialProvider> {
+    match env.var("ANTHROPIC_API_KEY") {
+        Some(key) => Box::new(StaticApiKey(key.to_string())),
+        None => {
+            let profile = env.var("ANTHROPIC_PROFILE").unwrap_or(DEFAULT_ANT_PROFILE);
+            Box::new(AntProfile::new(env.clone(), profile))
         }
     }
 }
@@ -127,6 +124,20 @@ mod tests {
         let cred = Credential::OAuth("t".into());
         assert_eq!(cred.header(), ("authorization", "Bearer t".to_string()));
         assert_eq!(cred.beta(), Some(OAUTH_BETA));
+    }
+
+    #[test]
+    fn provider_prefers_api_key_then_named_then_default_profile() {
+        let describe = |env: ProcessEnv| resolve_provider(&env).describe();
+        assert_eq!(
+            describe(ProcessEnv::from_vars([("ANTHROPIC_API_KEY", "k"), ("ANTHROPIC_PROFILE", "p")])),
+            "ANTHROPIC_API_KEY"
+        );
+        assert_eq!(describe(ProcessEnv::from_vars([("ANTHROPIC_PROFILE", "p")])), "ant profile 'p'");
+        assert_eq!(
+            describe(ProcessEnv::from_vars([("ANTHROPIC_API_KEY", "")])),
+            format!("ant profile '{DEFAULT_ANT_PROFILE}'")
+        );
     }
 
     #[test]

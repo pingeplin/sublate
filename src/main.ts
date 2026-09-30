@@ -109,9 +109,6 @@ function onJobEvent(e: JobEvent) {
     case "videoProgress":
       ui.videoBar.value = e.data.percent;
       break;
-    case "subtitleDownloaded":
-      ui.subLabel.textContent = "Translating";
-      break;
     case "translationProgress":
       ui.subBar.max = Math.max(e.data.total, 1);
       ui.subBar.value = e.data.done;
@@ -190,16 +187,14 @@ async function init() {
   ui.run.addEventListener("click", getContent);
   ui.chooseDir.addEventListener("click", chooseDir);
 
-  const [languages, auth, downloads] = await Promise.all([
-    api.targetLanguages(),
-    api.credentialSource(),
-    downloadDir(),
-  ]);
+  api
+    .credentialSource()
+    .then((auth) => (ui.auth.textContent = `Claude via ${auth}`))
+    .catch((err) => setStatus(String(err), true));
+
+  const [languages, downloads] = await Promise.all([api.targetLanguages(), downloadDir()]);
   renderTargets(languages);
-  ui.auth.textContent = `Claude via ${auth}`;
   ui.outDir.value = await join(downloads, OUTPUT_FOLDER);
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  init().catch((err) => setStatus(String(err), true));
-});
+init().catch((err) => setStatus(String(err), true));
