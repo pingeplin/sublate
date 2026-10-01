@@ -1,9 +1,10 @@
 # Contents Title
 
-Tauri 2 + Rust desktop app: paste a video URL, inspect its metadata with `yt-dlp`, download the video, and translate a subtitle track into another language with Claude. Subtitles are written as standalone `.srt` files — never merged into the video.
+Native macOS app (SwiftUI front end, Rust core): paste a video URL, inspect its metadata with `yt-dlp`, download the video, and translate a subtitle track into another language with Claude. Subtitles are written as standalone `.srt` files — never merged into the video.
 
 ## Requirements
 
+- macOS 26, Xcode 27, Rust, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 - `yt-dlp`, `ffmpeg`, and a JS runtime (`deno`, or `node` — passed via `--js-runtimes`) on the login-shell `PATH`
 - `ant` CLI logged in to the **contents-title** workspace:
 
@@ -16,9 +17,18 @@ Tauri 2 + Rust desktop app: paste a video URL, inspect its metadata with `yt-dlp
 ## Run
 
 ```sh
-pnpm install
-pnpm tauri dev
+make run   # builds the Rust core, generates the Swift bindings and Xcode project, then opens the app
 ```
+
+`make project` alone produces `app/ContentsTitle.xcodeproj` for working in Xcode; rerun `make core` after changing Rust code.
+
+## Layout
+
+| Path | Content |
+| --- | --- |
+| `core/` | Rust crate: yt-dlp, subtitle parsing, Claude translation. `src/ffi.rs` is the only surface the UI sees, exported through [UniFFI](https://mozilla.github.io/uniffi-rs/). |
+| `app/Kit/` | Swift package: `ContentsTitleCore` (generated bindings over the static library) and `ContentsTitleUI` (view model and SwiftUI views). |
+| `app/ContentsTitle/` | The app shell; `app/project.yml` is the XcodeGen spec. |
 
 ## Output
 
@@ -35,7 +45,7 @@ YouTube auto-captions scroll (each cue repeats the previous line); the translate
 ## Tests
 
 ```sh
-cd src-tauri
-cargo test                                            # offline
-cargo test --test live_test -- --ignored --nocapture  # hits YouTube + Claude API
+make test                                                                         # offline: Rust core + Swift view model
+cargo test --manifest-path core/Cargo.toml --test live_test -- --ignored --nocapture  # hits YouTube + Claude API
+LIVE=1 swift test --package-path app/Kit --filter LiveBridgeTests                  # same, through the Swift bridge
 ```

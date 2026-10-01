@@ -1,0 +1,48 @@
+import ContentsTitleCore
+import Foundation
+
+extension Error {
+    /// The backend's own wording; anything else falls back to Foundation's description.
+    var userMessage: String {
+        if case .Failed(let message) = self as? BackendError { return message }
+        return localizedDescription
+    }
+}
+
+extension VideoMetadata {
+    var reference: VideoRef {
+        VideoRef(url: url, id: id, title: title)
+    }
+
+    var durationText: String? {
+        duration.map { seconds in
+            Duration.seconds(seconds)
+                .formatted(.time(pattern: seconds < 3600 ? .minuteSecond : .hourMinuteSecond))
+        }
+    }
+}
+
+extension SubtitleTrack {
+    var label: String { "\(name) (\(code))" }
+}
+
+extension TargetLanguage {
+    var label: String { "\(native) (\(code))" }
+}
+
+extension TrackKind {
+    static let displayOrder: [TrackKind] = [.manual, .auto]
+
+    var title: String {
+        switch self {
+        case .manual: "Uploaded"
+        case .auto: "Auto-generated"
+        }
+    }
+}
+
+extension URL {
+    var filePath: String { path(percentEncoded: false) }
+
+    var abbreviatedPath: String { (filePath as NSString).abbreviatingWithTildeInPath }
+}
