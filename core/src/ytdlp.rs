@@ -1,22 +1,27 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 use crate::error::{AppError, AppResult};
 use crate::file_name::OutputLocation;
 use crate::metadata::{parse_metadata, SubtitleTrack, TrackKind, VideoMetadata};
-use crate::process_env::ProcessEnv;
+use crate::toolchain::Toolchain;
+use crate::update::{Install, Version};
 
-const PROGRAM: &str = "yt-dlp";
+/// What Finder-launched apps get; fixed so tools on the user's own PATH never take part.
+const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const STDERR_TAIL_LINES: usize = 8;
 const PROGRESS_TAG: &str = "CT_PROGRESS";
 const PATH_TAG: &str = "CT_PATH";
 
 pub struct YtDlp {
-    env: ProcessEnv,
-    use_node: bool,
+    /// Replaced when the updater installs a newer release.
+    install: RwLock<Install>,
+    /// Options every invocation starts with.
+    base_args: Vec<String>,
+    deno_dir: PathBuf,
     /// `-J` output of the last fetched video, keyed by its page URL.
     last_info: Mutex<Option<(String, Arc<str>)>>,
 }
@@ -30,14 +35,35 @@ enum Source<'a> {
 }
 
 impl YtDlp {
-    /// YouTube extraction needs a JS runtime; yt-dlp only enables deno by default.
-    pub fn new(env: ProcessEnv) -> Self {
-        let use_node = env.resolve("deno").is_none() && env.resolve("node").is_some();
+    /// Everything yt-dlp reads or runs is pinned to the bundle and `cache_dir`: the user's
+    /// yt-dlp config, ffmpeg and JS runtime are never picked up.
+    pub fn new(tools: Toolchain, cache_dir: &Path) -> Self {
+        let text = |path: &Path| path.to_string_lossy().into_owned();
+        #[rustfmt::skip]
+        let base_args = vec![
+            "--ignore-config".into(), "--no-playlist".into(),
+            "--ffmpeg-location".into(), text(&tools.ffmpeg_dir),
+            "--js-runtimes".into(), format!("deno:{}", text(&tools.deno)),
+            "--cache-dir".into(), text(&cache_dir.join("yt-dlp")),
+        ];
         Self {
-            env,
-            use_node,
+            install: RwLock::new(tools.ytdlp),
+            base_args,
+            deno_dir: cache_dir.join("deno"),
             last_info: Mutex::new(None),
         }
+    }
+
+    pub fn version(&self) -> Version {
+        self.install().version
+    }
+
+    pub fn switch_to(&self, install: Install) {
+        *self.install.write().expect("install lock") = install;
+    }
+
+    fn install(&self) -> Install {
+        self.install.read().expect("install lock").clone()
     }
 
     pub async fn fetch_metadata(&self, url: &str) -> AppResult<VideoMetadata> {
@@ -134,19 +160,13 @@ impl YtDlp {
     }
 
     fn args(&self, flags: &[&str], source: Source) -> Vec<String> {
-        let runtime: &[&str] = if self.use_node { &["--js-runtimes", "node"] } else { &[] };
         // `--` keeps a URL that starts with `-` from being read as an option.
         let input: &[&str] = match source {
             Source::Url(url) => &["--", url],
             Source::InfoJson => &["--load-info-json", "-"],
         };
-        ["--no-playlist"]
-            .iter()
-            .chain(runtime)
-            .chain(flags)
-            .chain(input)
-            .map(|s| s.to_string())
-            .collect()
+        let rest = flags.iter().chain(input).map(|s| s.to_string());
+        self.base_args.iter().cloned().chain(rest).collect()
     }
 
     async fn run(
@@ -156,9 +176,13 @@ impl YtDlp {
         cwd: Option<&Path>,
         on_line: impl Fn(&str),
     ) -> AppResult<String> {
-        let mut command = self.env.command(PROGRAM);
+        let program = self.install().program;
+        let mut command = tokio::process::Command::new(&program);
         command
             .args(args)
+            .env("PATH", SYSTEM_PATH)
+            .env("DENO_DIR", &self.deno_dir)
+            .kill_on_drop(true)
             .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -167,7 +191,7 @@ impl YtDlp {
         }
         let mut child = command
             .spawn()
-            .map_err(|e| AppError::YtDlp(format!("cannot start {PROGRAM}: {e}")))?;
+            .map_err(|e| AppError::YtDlp(format!("cannot start {}: {e}", program.display())))?;
 
         if let (Some(input), Some(mut pipe)) = (stdin, child.stdin.take()) {
             tokio::spawn(async move {
@@ -220,11 +244,25 @@ fn tail(text: &str, n: usize) -> String {
 mod tests {
     use super::*;
 
-    fn ytdlp(use_node: bool) -> YtDlp {
-        YtDlp {
-            use_node,
-            ..YtDlp::new(ProcessEnv::default())
-        }
+    fn ytdlp() -> YtDlp {
+        let tools = Toolchain {
+            ytdlp: Install::at(Version::parse("2026.08.19").unwrap(), Path::new("/tools/yt-dlp")),
+            ffmpeg_dir: "/tools".into(),
+            deno: "/tools/deno".into(),
+        };
+        YtDlp::new(tools, Path::new("/cache"))
+    }
+
+    #[rustfmt::skip]
+    const BASE: [&str; 8] = [
+        "--ignore-config", "--no-playlist",
+        "--ffmpeg-location", "/tools",
+        "--js-runtimes", "deno:/tools/deno",
+        "--cache-dir", "/cache/yt-dlp",
+    ];
+
+    fn with_base(rest: &[&'static str]) -> Vec<&'static str> {
+        [&BASE[..], rest].concat()
     }
 
     #[test]
@@ -236,25 +274,38 @@ mod tests {
     }
 
     #[test]
+    fn every_invocation_is_pinned_to_the_bundled_tools() {
+        assert_eq!(ytdlp().args(&[], Source::InfoJson)[..BASE.len()], BASE);
+    }
+
+    #[test]
     fn url_follows_end_of_options_marker() {
         assert_eq!(
-            ytdlp(true).args(&["-J"], Source::Url("--exec=x")),
-            ["--no-playlist", "--js-runtimes", "node", "-J", "--", "--exec=x"]
+            ytdlp().args(&["-J"], Source::Url("--exec=x")),
+            with_base(&["-J", "--", "--exec=x"])
         );
-        assert_eq!(ytdlp(false).args(&["-J"], Source::Url("U")), ["--no-playlist", "-J", "--", "U"]);
     }
 
     #[test]
     fn cached_info_is_read_from_stdin_without_url() {
         assert_eq!(
-            ytdlp(false).args(&["--skip-download"], Source::InfoJson),
-            ["--no-playlist", "--skip-download", "--load-info-json", "-"]
+            ytdlp().args(&["--skip-download"], Source::InfoJson),
+            with_base(&["--skip-download", "--load-info-json", "-"])
         );
     }
 
     #[test]
+    fn switching_installs_changes_the_reported_version() {
+        let ytdlp = ytdlp();
+        let newer = Install::at(Version::parse("2026.09.02").unwrap(), Path::new("/support/2026.09.02"));
+        ytdlp.switch_to(newer.clone());
+        assert_eq!(ytdlp.version(), newer.version);
+        assert_eq!(ytdlp.install().program, newer.program);
+    }
+
+    #[test]
     fn info_cache_only_serves_the_same_page() {
-        let ytdlp = ytdlp(false);
+        let ytdlp = ytdlp();
         *ytdlp.last_info.lock().unwrap() = Some(("https://a".into(), "{}".into()));
         assert!(ytdlp.cached_info("https://a").is_some());
         assert!(ytdlp.cached_info("https://b").is_none());

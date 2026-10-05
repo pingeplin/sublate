@@ -20,8 +20,10 @@ pub enum AppError {
     UnknownLanguage(String),
     #[error("{0}")]
     Unsupported(String),
-    #[error("cannot read the login shell environment: {0}")]
-    Environment(String),
+    #[error("the app's bundled tools are unusable: {0}")]
+    Toolchain(String),
+    #[error("yt-dlp update failed: {0}")]
+    Update(String),
 }
 
 impl AppError {

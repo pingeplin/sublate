@@ -2,9 +2,11 @@ import SwiftUI
 
 public struct ContentView: View {
     private let model: ContentModel
+    private let settings: SettingsModel
 
-    public init(model: ContentModel) {
+    public init(model: ContentModel, settings: SettingsModel) {
         self.model = model
+        self.settings = settings
     }
 
     public var body: some View {
@@ -24,7 +26,10 @@ public struct ContentView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationSubtitle(model.credentialSource.map { "Claude via \($0)" } ?? "")
-        .task { await model.start() }
+        .navigationSubtitle(settings.credential.subtitle)
+        .task {
+            model.start()
+            await settings.start()
+        }
     }
 }

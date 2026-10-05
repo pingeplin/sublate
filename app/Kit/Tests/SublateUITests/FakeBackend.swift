@@ -7,7 +7,10 @@ final class FakeBackend: BackendProtocol {
         TargetLanguage(code: "en", native: "English"),
     ]
 
-    var credential: Result<String, BackendError> = .success("ant profile contents-title")
+    /// What the shell offers when no key is saved in the app.
+    var shellCredential: String? = "ant profile 'contents-title'"
+    var installedYtdlp: Result<String, BackendError> = .success("2026.08.19")
+    var latestYtdlp: Result<String, BackendError> = .success("2026.09.02")
     var metadata: Result<VideoMetadata, BackendError> = .success(.sample())
     var video: Result<String, BackendError> = .success("/out/Title [abc].mp4")
     var subtitles: Result<SubtitleFiles, BackendError> = .success(
@@ -16,6 +19,8 @@ final class FakeBackend: BackendProtocol {
     var videoProgress: [Float] = [12.5, 100]
     var translationProgress: [(done: UInt64, total: UInt64)] = [(1, 2), (2, 2)]
 
+    private(set) var apiKey: String?
+    private(set) var updateRequests: [Bool] = []
     private(set) var fetchedURLs: [String] = []
     private(set) var videoRequests: [VideoRequest] = []
     private(set) var subtitleRequests: [SubtitleRequest] = []
@@ -36,8 +41,21 @@ final class FakeBackend: BackendProtocol {
         Self.languages
     }
 
-    func credentialSource() async throws -> String {
-        try credential.get()
+    nonisolated func setApiKey(key: String?) {
+        MainActor.assumeIsolated { apiKey = key }
+    }
+
+    func credentialSource() async -> String? {
+        apiKey == nil ? shellCredential : "your saved API key"
+    }
+
+    func ytdlpVersion() async throws -> String {
+        try installedYtdlp.get()
+    }
+
+    func updateYtdlp(force: Bool) async throws -> String {
+        updateRequests.append(force)
+        return try latestYtdlp.get()
     }
 
     func fetchMetadata(url: String) async throws -> VideoMetadata {

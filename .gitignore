@@ -6,3 +6,6 @@ app/build
 app/Kit/.build
 app/Kit/Sources/SublateCore
 app/Kit/*.xcframework
+vendor/cache
+vendor/tools
+vendor/.stage

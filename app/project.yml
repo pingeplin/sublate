@@ -11,6 +11,10 @@ targets:
     platform: macOS
     sources:
       - Sublate
+      # yt-dlp, deno and ffmpeg, already signed by `make tools`; copied as-is to Resources/tools.
+      - path: ../vendor/tools
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: SublateKit
         product: SublateUI
@@ -25,5 +29,11 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Sublate/Info.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
-        # Not sandboxed: the backend runs yt-dlp, ffmpeg and ant from the login-shell PATH.
-        CODE_SIGN_IDENTITY: "-"
+        # Not sandboxed: the backend runs the bundled tools and writes wherever the user chooses.
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: 5Q458ND242
+        CODE_SIGN_IDENTITY: Developer ID Application
+        ENABLE_HARDENED_RUNTIME: YES
+        # Notarization needs a secure timestamp and rejects the debugging entitlement.
+        OTHER_CODE_SIGN_FLAGS: --timestamp
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO

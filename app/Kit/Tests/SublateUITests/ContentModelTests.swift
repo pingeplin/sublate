@@ -19,22 +19,12 @@ struct ContentModelTests {
         return model
     }
 
-    @Test func startLoadsLanguagesAndCredentialSource() async {
-        await model.start()
+    @Test func startLoadsTheTargetLanguages() {
+        model.start()
 
         #expect(model.languages == FakeBackend.languages)
         #expect(model.targetCode == "zh-TW")
-        #expect(model.credentialSource == "ant profile contents-title")
         #expect(model.status == .idle)
-    }
-
-    @Test func startReportsACredentialFailure() async {
-        backend.credential = .failure(.Failed(message: "cannot read the login shell environment: timeout"))
-
-        await model.start()
-
-        #expect(model.credentialSource == nil)
-        #expect(model.status == .failure("cannot read the login shell environment: timeout"))
     }
 
     @Test func fetchCannotStartWithoutAURL() {

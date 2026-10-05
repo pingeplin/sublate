@@ -8,21 +8,22 @@ use tokio::io::AsyncReadExt;
 const MARKER: &str = "__SUBLATE_ENV__";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Apps launched from Finder inherit a minimal environment; PATH (Homebrew, pyenv, nvm)
-/// and exported keys live in the user's shell profile.
+/// Apps launched from Finder inherit a minimal environment; exported keys and the PATH that
+/// holds `ant` live in the user's shell profile.
 #[derive(Debug, Clone, Default)]
 pub struct ProcessEnv {
     vars: HashMap<String, String>,
 }
 
 impl ProcessEnv {
-    pub async fn from_login_shell() -> Result<Self, String> {
-        Ok(Self::merge(login_shell_vars().await?, inherited_vars()))
-    }
-
-    pub fn inherited() -> Self {
-        Self {
-            vars: inherited_vars(),
+    /// A shell profile that hangs or fails must not take the app down with it, so the
+    /// inherited environment stands in.
+    pub async fn load() -> Self {
+        match login_shell_vars().await {
+            Ok(shell) => Self::merge(shell, inherited_vars()),
+            Err(_) => Self {
+                vars: inherited_vars(),
+            },
         }
     }
 

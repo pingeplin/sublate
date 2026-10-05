@@ -25,6 +25,7 @@ reqwest = { version = "0.13.5", default-features = false, features = ["json", "r
 futures = "0.3.34"
 unicode-normalization = "0.1.25"
 uniffi = { version = "0.32.2", features = ["tokio"] }
+sha2 = "0.11.0"
 
 [profile.release]
 codegen-units = 1

@@ -15,7 +15,6 @@ public final class ContentModel {
     var downloadsVideo = true
 
     private(set) var status = Status.idle
-    private(set) var credentialSource: String?
     private(set) var languages: [TargetLanguage] = []
     private(set) var video: VideoMetadata?
     private(set) var progress: JobProgress?
@@ -29,24 +28,12 @@ public final class ContentModel {
         self.outputDirectory = outputDirectory
     }
 
-    public convenience init() {
-        self.init(
-            backend: Backend(),
-            outputDirectory: URL.downloadsDirectory.appending(path: Self.outputFolder, directoryHint: .isDirectory)
-        )
-    }
-
     var canFetch: Bool {
         !isBusy && !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func start() async {
+    func start() {
         languages = backend.targetLanguages()
-        do {
-            credentialSource = try await backend.credentialSource()
-        } catch {
-            status = .failure(error.userMessage)
-        }
     }
 
     func fetchMetadata() async {

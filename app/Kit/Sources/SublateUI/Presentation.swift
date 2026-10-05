@@ -9,6 +9,25 @@ extension Error {
     }
 }
 
+extension CredentialState {
+    var label: String {
+        switch self {
+        case .checking: "Checking…"
+        case .missing: "No API key yet"
+        case .available(let source): source
+        }
+    }
+
+    /// Shown under the window title.
+    var subtitle: String {
+        switch self {
+        case .checking: ""
+        case .missing: "Add an Anthropic API key in Settings (⌘,)"
+        case .available(let source): "Claude via \(source)"
+        }
+    }
+}
+
 extension VideoMetadata {
     var reference: VideoRef {
         VideoRef(url: url, id: id, title: title)

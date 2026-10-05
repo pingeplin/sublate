@@ -1,43 +1,78 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use tokio::sync::OnceCell;
 
-use crate::auth::resolve_provider;
-use crate::error::{AppError, AppResult};
-use crate::process_env::ProcessEnv;
+use crate::auth::CredentialChain;
+use crate::error::AppResult;
+use crate::toolchain::Toolchain;
 use crate::translate::claude::ClaudeTranslator;
 use crate::translate::Translator;
+use crate::update::{GitHubReleases, Installs, Updater};
 use crate::ytdlp::YtDlp;
+
+const INSTALLS_DIR: &str = "yt-dlp";
+const UPDATE_MARKER: &str = "yt-dlp.last-check";
+
+/// Where the app keeps what it runs and what it writes.
+pub struct Locations {
+    /// The bundled yt-dlp, deno, ffmpeg and ffprobe.
+    pub tools: PathBuf,
+    /// yt-dlp releases installed after the app shipped.
+    pub support: PathBuf,
+    pub cache: PathBuf,
+}
 
 pub struct Services {
     pub ytdlp: YtDlp,
     pub translator: Box<dyn Translator>,
-    pub credential_source: String,
+    pub updater: Updater,
 }
 
 impl Services {
-    async fn load() -> AppResult<Self> {
-        let env = match ProcessEnv::from_login_shell().await {
-            Ok(env) => env,
-            // Launched from a terminal, the inherited environment is already complete.
-            Err(_) if ProcessEnv::inherited().resolve("yt-dlp").is_some() => ProcessEnv::inherited(),
-            // An error is not cached, so the next command probes again.
-            Err(reason) => return Err(AppError::Environment(reason)),
-        };
-        let credentials = resolve_provider(&env);
-        let credential_source = credentials.describe();
+    fn load(locations: &Locations, credentials: Arc<CredentialChain>) -> AppResult<Self> {
+        let mut tools = Toolchain::bundled(&locations.tools)?;
+        let installs = Installs::new(locations.support.join(INSTALLS_DIR));
+        let newer = installs.newest().filter(|install| install.version > tools.ytdlp.version);
+        installs.retain(newer.as_ref().map(|install| &install.version));
+        if let Some(install) = newer {
+            tools.ytdlp = install;
+        }
         Ok(Self {
-            translator: Box::new(ClaudeTranslator::new(credentials)?),
-            ytdlp: YtDlp::new(env),
-            credential_source,
+            ytdlp: YtDlp::new(tools, &locations.cache),
+            translator: Box::new(ClaudeTranslator::new(Box::new(credentials))?),
+            updater: Updater::new(
+                Box::new(GitHubReleases::new()?),
+                installs,
+                locations.support.join(UPDATE_MARKER),
+            ),
         })
     }
 }
 
-/// Built on first use so the login-shell probe never blocks window start-up.
-#[derive(Default)]
-pub struct AppState(OnceCell<Services>);
+/// Services are built on first use, so a broken installation surfaces as an error message
+/// in the window rather than at launch.
+pub struct AppState {
+    locations: Locations,
+    credentials: Arc<CredentialChain>,
+    services: OnceCell<Services>,
+}
 
 impl AppState {
+    pub fn new(locations: Locations) -> Self {
+        Self {
+            locations,
+            credentials: Arc::default(),
+            services: OnceCell::new(),
+        }
+    }
+
+    pub fn credentials(&self) -> &CredentialChain {
+        &self.credentials
+    }
+
     pub async fn services(&self) -> AppResult<&Services> {
-        self.0.get_or_try_init(Services::load).await
+        let load = || async { Services::load(&self.locations, Arc::clone(&self.credentials)) };
+        self.services.get_or_try_init(load).await
     }
 }
