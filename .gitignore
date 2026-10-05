@@ -9,3 +9,4 @@ app/Kit/*.xcframework
 vendor/cache
 vendor/tools
 vendor/.stage
+dist

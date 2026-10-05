@@ -4,6 +4,8 @@ export MACOSX_DEPLOYMENT_TARGET
 # Every build is signed for distribution, so the Keychain item holding the API key stays
 # readable across rebuilds and the app that is tested is the app that ships.
 SIGN_IDENTITY ?= Developer ID Application: YingPing Lin (5Q458ND242)
+# Created once with `xcrun notarytool store-credentials $(NOTARY_PROFILE)`.
+NOTARY_PROFILE ?= sublate
 
 CRATE := sublate_core
 STATIC_LIB := core/target/release/lib$(CRATE).a
@@ -15,6 +17,8 @@ DERIVED := app/build
 APP := $(DERIVED)/Build/Products/Release/Sublate.app
 TOOLS := vendor/tools
 TOOLS_READY := $(TOOLS)/yt-dlp.version
+VERSION := $(shell awk '$$1 == "MARKETING_VERSION:" { print $$2 }' app/project.yml)
+DMG := dist/Sublate-$(VERSION).dmg
 
 # The generator builds in the debug profile so its `cli` feature never leaks into the release
 # archive, and runs inside the crate because it reads `cargo metadata`.
@@ -22,7 +26,7 @@ BINDGEN := cd core && cargo run --quiet --features cli --bin uniffi-bindgen-swif
 
 RUST_SOURCES := $(shell find core/src -name '*.rs') core/Cargo.toml core/Cargo.lock
 
-.PHONY: core tools project build run test clean
+.PHONY: core tools project build run test dmg release clean
 
 core: $(XCFRAMEWORK)
 
@@ -48,6 +52,14 @@ build: project
 		CODE_SIGN_IDENTITY="$(SIGN_IDENTITY)" build
 	codesign --verify --deep --strict "$(APP)"
 
+# A signed disk image for trying the installer locally; Gatekeeper rejects it elsewhere.
+dmg: build
+	scripts/package.sh "$(APP)" "$(DMG)" "$(SIGN_IDENTITY)"
+
+# The disk image to publish: app and image are both notarized and stapled.
+release: build
+	scripts/package.sh "$(APP)" "$(DMG)" "$(SIGN_IDENTITY)" "$(NOTARY_PROFILE)"
+
 run: build
 	open "$(APP)"
 
@@ -58,4 +70,4 @@ test: core
 clean:
 	cargo clean --manifest-path core/Cargo.toml
 	rm -rf $(DERIVED) $(XCFRAMEWORK) $(BINDINGS) app/Sublate.xcodeproj $(KIT)/.build
-	rm -rf $(TOOLS) vendor/.stage
+	rm -rf $(TOOLS) vendor/.stage dist

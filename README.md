@@ -16,6 +16,14 @@ Requirements: macOS 26, Xcode 27, Rust, [XcodeGen](https://github.com/yonaskolb/
 
 ```sh
 make run       # downloads and signs the bundled tools, builds the Rust core and the app, then opens it
+make dmg       # signed disk image in dist/, for trying the installer on this Mac
+make release   # the same, notarized and stapled: the file to publish
+```
+
+`make release` needs notarization credentials stored once:
+
+```sh
+xcrun notarytool store-credentials sublate --apple-id <apple id> --team-id <team id>
 ```
 
 `make project` alone produces `app/Sublate.xcodeproj` for working in Xcode; rerun `make core` after changing Rust code.
@@ -32,6 +40,7 @@ Developers can skip the saved key: without one, the app falls back to `ANTHROPIC
 | `app/Kit/` | Swift package: `SublateCore` (generated bindings over the static library) and `SublateUI` (view model and SwiftUI views). |
 | `app/Sublate/` | The app shell; `app/project.yml` is the XcodeGen spec. |
 | `vendor/` | Pinned third-party tools: `fetch.sh` downloads, verifies and signs them into `vendor/tools`, which the app bundles as `Contents/Resources/tools`. |
+| `scripts/package.sh` | Builds, signs and optionally notarizes the disk image. |
 
 ## Output
 
