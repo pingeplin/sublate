@@ -30,6 +30,16 @@ struct PresentationTests {
         #expect(SubtitleProgress.translating(done: 0, total: 0).fraction == 0)
     }
 
+    @Test func ytdlpOffersADownloadUntilItIsInstalled() {
+        #expect(YtdlpState(version: nil) == .missing)
+        #expect(YtdlpState.missing.label == "Not installed")
+        #expect(YtdlpState.missing.action == "Download")
+
+        let installed = YtdlpState(version: "2026.09.02")
+        #expect(installed.label == "2026.09.02")
+        #expect(installed.action == "Check for Updates")
+    }
+
     @Test func backendErrorsShowTheirOwnMessage() {
         let error: any Error = BackendError.Failed(message: "yt-dlp failed: boom")
         #expect(error.userMessage == "yt-dlp failed: boom")

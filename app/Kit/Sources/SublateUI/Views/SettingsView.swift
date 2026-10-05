@@ -29,17 +29,21 @@ public struct SettingsView: View {
                 Text("Subtitles are translated with your key, which is kept in your Keychain.")
             }
 
-            Section("yt-dlp") {
+            Section {
                 LabeledContent("Version") {
                     if model.isUpdating {
                         ProgressView().controlSize(.small)
                     }
-                    Text(model.ytdlpVersion ?? "—")
-                    Button("Check for Updates") {
-                        Task { await model.checkForUpdates() }
+                    Text(model.ytdlp.label)
+                    Button(model.ytdlp.action) {
+                        Task { await model.installLatestYtdlp() }
                     }
                     .disabled(model.isUpdating)
                 }
+            } header: {
+                Text("yt-dlp")
+            } footer: {
+                Text("Videos are fetched with yt-dlp, downloaded from its official releases and kept up to date.")
             }
 
             if model.status != .idle {

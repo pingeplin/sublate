@@ -57,9 +57,39 @@ struct SettingsModelTests {
         await model.start()
 
         #expect(backend.updateRequests == [false])
-        #expect(model.ytdlpVersion == "2026.09.02")
+        #expect(model.ytdlp == .installed(version: "2026.09.02"))
         #expect(!model.isUpdating)
         #expect(model.status == .idle)
+    }
+
+    @Test func startWithoutYtdlpLeavesTheDownloadToTheUser() async {
+        backend.installedYtdlp = .success(nil)
+
+        await model.start()
+
+        #expect(model.ytdlp == .missing)
+        #expect(model.status == .idle)
+    }
+
+    @Test func downloadingInstallsTheLatestYtdlp() async {
+        backend.installedYtdlp = .success(nil)
+        await model.start()
+
+        await model.installLatestYtdlp()
+
+        #expect(backend.updateRequests == [false, true])
+        #expect(model.ytdlp == .installed(version: "2026.09.02"))
+        #expect(model.status == .info("yt-dlp is up to date."))
+    }
+
+    @Test func aFailedDownloadIsReportedAndYtdlpStaysMissing() async {
+        backend.installedYtdlp = .success(nil)
+        backend.latestYtdlp = .failure(.Failed(message: "yt-dlp update failed: offline"))
+
+        await model.installLatestYtdlp()
+
+        #expect(model.ytdlp == .missing)
+        #expect(model.status == .failure("yt-dlp update failed: offline"))
     }
 
     @Test func aFailedRoutineUpdateKeepsTheInstalledVersionQuietly() async {
@@ -67,7 +97,7 @@ struct SettingsModelTests {
 
         await model.start()
 
-        #expect(model.ytdlpVersion == "2026.08.19")
+        #expect(model.ytdlp == .installed(version: "2026.08.19"))
         #expect(model.status == .idle)
     }
 
@@ -76,24 +106,24 @@ struct SettingsModelTests {
 
         await model.start()
 
-        #expect(model.ytdlpVersion == nil)
+        #expect(model.ytdlp == .checking)
         #expect(model.status == .failure("the app's bundled tools are unusable: deno is missing"))
     }
 
     @Test func checkingForUpdatesForcesTheCheckAndReportsBack() async {
-        await model.checkForUpdates()
+        await model.installLatestYtdlp()
 
         #expect(backend.updateRequests == [true])
-        #expect(model.ytdlpVersion == "2026.09.02")
+        #expect(model.ytdlp == .installed(version: "2026.09.02"))
         #expect(model.status == .info("yt-dlp is up to date."))
     }
 
     @Test func aFailedRequestedUpdateIsReported() async {
         backend.latestYtdlp = .failure(.Failed(message: "yt-dlp update failed: offline"))
 
-        await model.checkForUpdates()
+        await model.installLatestYtdlp()
 
-        #expect(model.ytdlpVersion == "2026.08.19")
+        #expect(model.ytdlp == .installed(version: "2026.08.19"))
         #expect(model.status == .failure("yt-dlp update failed: offline"))
     }
 

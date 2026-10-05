@@ -11,7 +11,7 @@ targets:
     platform: macOS
     sources:
       - Sublate
-      # yt-dlp, deno and ffmpeg, already signed by `make tools`; copied as-is to Resources/tools.
+      # deno and ffmpeg, already signed by `make tools`; copied as-is to Resources/tools.
       - path: ../vendor/tools
         type: folder
         buildPhase: resources

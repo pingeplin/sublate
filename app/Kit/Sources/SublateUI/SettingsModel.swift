@@ -9,6 +9,17 @@ enum CredentialState: Equatable {
     case available(source: String)
 }
 
+/// yt-dlp is downloaded rather than shipped, so a new installation starts without it.
+enum YtdlpState: Equatable {
+    case checking
+    case missing
+    case installed(version: String)
+
+    init(version: String?) {
+        self = version.map { .installed(version: $0) } ?? .missing
+    }
+}
+
 @MainActor
 @Observable
 public final class SettingsModel {
@@ -16,7 +27,7 @@ public final class SettingsModel {
 
     private(set) var credential = CredentialState.checking
     private(set) var hasSavedKey = false
-    private(set) var ytdlpVersion: String?
+    private(set) var ytdlp = YtdlpState.checking
     private(set) var isUpdating = false
     private(set) var status = Status.idle
 
@@ -58,7 +69,8 @@ public final class SettingsModel {
         }
     }
 
-    func checkForUpdates() async {
+    /// Downloads yt-dlp the first time, and looks for a newer release after that.
+    func installLatestYtdlp() async {
         await updateYtdlp(force: true)
     }
 
@@ -86,11 +98,11 @@ public final class SettingsModel {
         isUpdating = true
         defer { isUpdating = false }
         do {
-            ytdlpVersion = try await backend.ytdlpVersion()
-            ytdlpVersion = try await backend.updateYtdlp(force: force)
+            ytdlp = YtdlpState(version: try await backend.ytdlpVersion())
+            ytdlp = YtdlpState(version: try await backend.updateYtdlp(force: force))
             if force { status = .info("yt-dlp is up to date.") }
         } catch {
-            if force || ytdlpVersion == nil { status = .failure(error.userMessage) }
+            if force || ytdlp == .checking { status = .failure(error.userMessage) }
         }
     }
 }

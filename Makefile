@@ -16,7 +16,7 @@ BINDINGS := $(KIT)/Sources/SublateCore
 DERIVED := app/build
 APP := $(DERIVED)/Build/Products/Release/Sublate.app
 TOOLS := vendor/tools
-TOOLS_READY := $(TOOLS)/yt-dlp.version
+TOOLS_READY := $(TOOLS)/deno
 VERSION := $(shell awk '$$1 == "MARKETING_VERSION:" { print $$2 }' app/project.yml)
 DMG := dist/Sublate-$(VERSION).dmg
 

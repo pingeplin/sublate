@@ -30,8 +30,8 @@ pub trait ReleaseFeed: Send + Sync {
     async fn download(&self, release: &Release, dest: &Path) -> AppResult<()>;
 }
 
-/// Keeps yt-dlp current between app releases: sites change faster than the app ships, and the
-/// copy sealed inside the signed bundle cannot be replaced in place.
+/// Installs yt-dlp and keeps it current. It is downloaded rather than shipped: sites change
+/// faster than the app ships, and a copy sealed inside the signed bundle could not be replaced.
 pub struct Updater {
     feed: Box<dyn ReleaseFeed>,
     installs: Installs,
@@ -50,15 +50,16 @@ impl Updater {
         }
     }
 
-    /// Returns the latest release once it is installed and newer than `current`. Unless
-    /// forced, the feed is asked at most once a day; a failed check is retried next time.
-    pub async fn refresh(&self, current: &Version, force: bool) -> AppResult<Option<Install>> {
+    /// Returns the latest release once it is installed and newer than `current`, the release
+    /// in use if there is one. Unless forced, the first release is left for the user to ask
+    /// for and the feed is asked at most once a day; a failed check is retried next time.
+    pub async fn refresh(&self, current: Option<&Version>, force: bool) -> AppResult<Option<Install>> {
         let _running = self.running.lock().await;
-        if !force && !self.is_due() {
+        if !force && (current.is_none() || !self.is_due()) {
             return Ok(None);
         }
         let release = self.feed.latest().await?;
-        let install = if release.version > *current {
+        let install = if current.is_none_or(|current| release.version > *current) {
             Some(self.install(&release).await?)
         } else {
             None
@@ -204,7 +205,8 @@ mod tests {
     async fn installs_a_newer_release_and_cleans_up_the_download() {
         let fixture = Fixture::offering("2026.09.02").await;
 
-        let install = fixture.updater.refresh(&version("2026.08.19"), false).await.unwrap().unwrap();
+        let stale = version("2026.08.19");
+        let install = fixture.updater.refresh(Some(&stale), false).await.unwrap().unwrap();
 
         assert_eq!(install.version, version("2026.09.02"));
         assert_eq!(fixture.installed(), Some(install));
@@ -212,11 +214,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_first_release_is_installed_only_when_asked_for() {
+        let fixture = Fixture::offering("2026.09.02").await;
+
+        assert_eq!(fixture.updater.refresh(None, false).await.unwrap(), None);
+        assert_eq!(fixture.calls.latest.load(Ordering::SeqCst), 0);
+
+        let install = fixture.updater.refresh(None, true).await.unwrap().unwrap();
+        assert_eq!(install.version, version("2026.09.02"));
+        assert_eq!(fixture.installed(), Some(install));
+    }
+
+    #[tokio::test]
     async fn leaves_a_current_install_alone() {
         let fixture = Fixture::offering("2026.08.19").await;
 
-        assert_eq!(fixture.updater.refresh(&version("2026.08.19"), false).await.unwrap(), None);
-        assert_eq!(fixture.updater.refresh(&version("2026.10.01"), true).await.unwrap(), None);
+        assert_eq!(fixture.updater.refresh(Some(&version("2026.08.19")), false).await.unwrap(), None);
+        assert_eq!(fixture.updater.refresh(Some(&version("2026.10.01")), true).await.unwrap(), None);
         assert_eq!(fixture.calls.downloads.load(Ordering::SeqCst), 0);
         assert_eq!(fixture.installed(), None);
     }
@@ -226,11 +240,11 @@ mod tests {
         let fixture = Fixture::offering("2026.08.19").await;
         let current = version("2026.08.19");
 
-        fixture.updater.refresh(&current, false).await.unwrap();
-        fixture.updater.refresh(&current, false).await.unwrap();
+        fixture.updater.refresh(Some(&current), false).await.unwrap();
+        fixture.updater.refresh(Some(&current), false).await.unwrap();
         assert_eq!(fixture.calls.latest.load(Ordering::SeqCst), 1);
 
-        fixture.updater.refresh(&current, true).await.unwrap();
+        fixture.updater.refresh(Some(&current), true).await.unwrap();
         assert_eq!(fixture.calls.latest.load(Ordering::SeqCst), 2);
     }
 
@@ -239,8 +253,8 @@ mod tests {
         let fixture = Fixture::offering("2026.09.02").await;
         let stale = version("2026.08.19");
 
-        let first = fixture.updater.refresh(&stale, true).await.unwrap();
-        let second = fixture.updater.refresh(&stale, true).await.unwrap();
+        let first = fixture.updater.refresh(Some(&stale), true).await.unwrap();
+        let second = fixture.updater.refresh(Some(&stale), true).await.unwrap();
 
         assert_eq!(first, second);
         assert_eq!(fixture.calls.downloads.load(Ordering::SeqCst), 1);
@@ -253,7 +267,7 @@ mod tests {
         })
         .await;
 
-        let err = fixture.updater.refresh(&version("2026.08.19"), false).await.unwrap_err();
+        let err = fixture.updater.refresh(Some(&version("2026.08.19")), false).await.unwrap_err();
 
         assert_eq!(err.to_string(), "yt-dlp update failed: release 2026.09.02 does not match its checksum");
         assert_eq!(fixture.installed(), None);
@@ -268,8 +282,8 @@ mod tests {
         .await;
         let current = version("2026.08.19");
 
-        assert!(fixture.updater.refresh(&current, false).await.is_err());
-        assert!(fixture.updater.refresh(&current, false).await.is_err());
+        assert!(fixture.updater.refresh(Some(&current), false).await.is_err());
+        assert!(fixture.updater.refresh(Some(&current), false).await.is_err());
         assert_eq!(fixture.calls.latest.load(Ordering::SeqCst), 2);
     }
 }

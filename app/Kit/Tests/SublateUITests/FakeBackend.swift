@@ -9,7 +9,7 @@ final class FakeBackend: BackendProtocol {
 
     /// What the shell offers when no key is saved in the app.
     var shellCredential: String? = "ant profile 'contents-title'"
-    var installedYtdlp: Result<String, BackendError> = .success("2026.08.19")
+    var installedYtdlp: Result<String?, BackendError> = .success("2026.08.19")
     var latestYtdlp: Result<String, BackendError> = .success("2026.09.02")
     var metadata: Result<VideoMetadata, BackendError> = .success(.sample())
     var video: Result<String, BackendError> = .success("/out/Title [abc].mp4")
@@ -49,12 +49,14 @@ final class FakeBackend: BackendProtocol {
         apiKey == nil ? shellCredential : "your saved API key"
     }
 
-    func ytdlpVersion() async throws -> String {
+    func ytdlpVersion() async throws -> String? {
         try installedYtdlp.get()
     }
 
-    func updateYtdlp(force: Bool) async throws -> String {
+    /// Like the real backend, the first release is only downloaded when forced.
+    func updateYtdlp(force: Bool) async throws -> String? {
         updateRequests.append(force)
+        if try installedYtdlp.get() == nil && !force { return nil }
         return try latestYtdlp.get()
     }
 

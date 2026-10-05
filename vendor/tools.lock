@@ -1,10 +1,6 @@
 # Pinned third-party tools bundled into the app; sourced by vendor/fetch.sh.
 # After changing a version, update its checksum and the versions in vendor/licenses/README.md.
 
-YTDLP_VERSION=2026.08.19
-YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/download/$YTDLP_VERSION/yt-dlp_macos.zip
-YTDLP_SHA256=07e54b0865303c864006925913bce2604f8ee8cc6f18699bac9c309f9328a6d8
-
 DENO_VERSION=2.9.7
 DENO_URL=https://github.com/denoland/deno/releases/download/v$DENO_VERSION/deno-aarch64-apple-darwin.zip
 DENO_SHA256=5cd46d6268f6f78f5d88bdc7159d20bd44cdaa4b3303474839f87ec6fe7ae25c

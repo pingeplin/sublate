@@ -4,8 +4,8 @@ import Testing
 
 @testable import SublateUI
 
-/// Drives the real Rust backend with the vendored tools (`make tools`), so it hits YouTube and
-/// the Claude API. Run with `LIVE=1 swift test`.
+/// Drives the real Rust backend with the vendored tools (`make tools`), so it downloads yt-dlp
+/// and hits YouTube and the Claude API. Run with `LIVE=1 swift test`.
 @MainActor
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["LIVE"] != nil))
 struct LiveBridgeTests {
@@ -21,13 +21,15 @@ struct LiveBridgeTests {
         let model = ContentModel(backend: backend, outputDirectory: directory.appending(path: "out"))
 
         await settings.start()
+        #expect(settings.ytdlp == .missing)
+        await settings.installLatestYtdlp()
         model.start()
         model.urlText = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
         await model.fetchMetadata()
         await model.getContent()
 
         #expect(settings.credential != .missing)
-        #expect(settings.ytdlpVersion != nil)
+        #expect(settings.ytdlp != .missing)
         #expect(model.video?.title == "Me at the zoo")
         #expect(model.status == .info("Done."))
         #expect(model.progress?.videoPercent == 100)

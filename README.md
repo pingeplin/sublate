@@ -4,11 +4,11 @@ Native macOS app (SwiftUI front end, Rust core): paste a video URL, inspect its 
 
 ## Install
 
-Download the disk image, open it and drag **Sublate** to Applications. Nothing else needs installing: `yt-dlp`, `ffmpeg` and the `deno` JavaScript runtime it relies on are inside the app. It needs macOS 26 on Apple Silicon.
+Download the disk image, open it and drag **Sublate** to Applications. `ffmpeg` and the `deno` JavaScript runtime are inside the app; `yt-dlp` is not, so the first launch asks you to download it in **Settings (⌘,)**. It needs macOS 26 on Apple Silicon.
 
 Translation uses your own Anthropic API key: paste it in **Settings (⌘,)**, where it is kept in your Keychain. Fetching and downloading work without one.
 
-Sites change faster than the app ships, so once a day the app looks for a newer official `yt-dlp` release, verifies its checksum, and installs it under `~/Library/Application Support/tech.radiw.sublate/`; **Settings → Check for Updates** does the same on demand. The newer of that copy and the bundled one is used.
+Sites change faster than the app ships, so `yt-dlp` is downloaded rather than bundled: **Settings → Download** fetches the latest official release, verifies its checksum, and installs it under `~/Library/Application Support/tech.radiw.sublate/`. After that the app looks for a newer release once a day, and **Settings → Check for Updates** does the same on demand.
 
 ## Build
 
@@ -39,7 +39,7 @@ Developers can skip the saved key: without one, the app falls back to `ANTHROPIC
 | `core/` | Rust crate: yt-dlp and its updater, subtitle parsing, Claude translation. `src/ffi.rs` is the only surface the UI sees, exported through [UniFFI](https://mozilla.github.io/uniffi-rs/). |
 | `app/Kit/` | Swift package: `SublateCore` (generated bindings over the static library) and `SublateUI` (view model and SwiftUI views). |
 | `app/Sublate/` | The app shell; `app/project.yml` is the XcodeGen spec. |
-| `vendor/` | Pinned third-party tools: `fetch.sh` downloads, verifies and signs them into `vendor/tools`, which the app bundles as `Contents/Resources/tools`. |
+| `vendor/` | Pinned third-party tools (`ffmpeg`, `deno`): `fetch.sh` downloads, verifies and signs them into `vendor/tools`, which the app bundles as `Contents/Resources/tools`. |
 | `scripts/package.sh` | Builds, signs and optionally notarizes the disk image; `dmg.settings.py` is its drag-to-Applications window layout. |
 
 ## Output

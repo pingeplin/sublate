@@ -16,9 +16,9 @@ const UPDATE_MARKER: &str = "yt-dlp.last-check";
 
 /// Where the app keeps what it runs and what it writes.
 pub struct Locations {
-    /// The bundled yt-dlp, deno, ffmpeg and ffprobe.
+    /// The bundled deno, ffmpeg and ffprobe.
     pub tools: PathBuf,
-    /// yt-dlp releases installed after the app shipped.
+    /// The yt-dlp releases the app downloads.
     pub support: PathBuf,
     pub cache: PathBuf,
 }
@@ -31,15 +31,12 @@ pub struct Services {
 
 impl Services {
     fn load(locations: &Locations, credentials: Arc<CredentialChain>) -> AppResult<Self> {
-        let mut tools = Toolchain::bundled(&locations.tools)?;
+        let tools = Toolchain::bundled(&locations.tools)?;
         let installs = Installs::new(locations.support.join(INSTALLS_DIR));
-        let newer = installs.newest().filter(|install| install.version > tools.ytdlp.version);
-        installs.retain(newer.as_ref().map(|install| &install.version));
-        if let Some(install) = newer {
-            tools.ytdlp = install;
-        }
+        let newest = installs.newest();
+        installs.retain(newest.as_ref().map(|install| &install.version));
         Ok(Self {
-            ytdlp: YtDlp::new(tools, &locations.cache),
+            ytdlp: YtDlp::new(tools, newest, &locations.cache),
             translator: Box::new(ClaudeTranslator::new(Box::new(credentials))?),
             updater: Updater::new(
                 Box::new(GitHubReleases::new()?),

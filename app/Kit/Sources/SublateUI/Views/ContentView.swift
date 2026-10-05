@@ -11,6 +11,15 @@ public struct ContentView: View {
 
     public var body: some View {
         Form {
+            if settings.ytdlp == .missing {
+                Section {
+                    LabeledContent("Sublate fetches videos with yt-dlp, which isn't installed yet.") {
+                        SettingsLink {
+                            Text("Download in Settings…")
+                        }
+                    }
+                }
+            }
             URLSection(model: model)
             if let video = model.video {
                 Section {
