@@ -140,6 +140,11 @@ impl Backend {
         Ok(version_text(&services.ytdlp))
     }
 
+    /// Deletes the downloaded yt-dlp and the caches; yt-dlp has to be downloaded again.
+    pub async fn clear_data(&self) -> BackendResult<()> {
+        Ok(self.state.clear_data().await?)
+    }
+
     pub async fn fetch_metadata(&self, url: String) -> BackendResult<VideoMetadata> {
         let services = self.state.services().await?;
         Ok(services.ytdlp.fetch_metadata(url.trim()).await?)
@@ -271,6 +276,29 @@ mod tests {
         assert_eq!(backend.update_ytdlp(false).await.unwrap(), None);
         let err = backend.fetch_metadata("https://example.com/v".into()).await.unwrap_err();
         assert_eq!(err.to_string(), "yt-dlp is not installed; download it in Settings (⌘,)");
+    }
+
+    #[tokio::test]
+    async fn clearing_data_deletes_what_the_app_wrote_and_nothing_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let release = dir.path().join("support/yt-dlp/2026.08.19");
+        std::fs::create_dir_all(&release).unwrap();
+        std::fs::write(release.join(crate::update::PROGRAM), "").unwrap();
+        std::fs::write(dir.path().join("support/yt-dlp.last-check"), "2026.08.19").unwrap();
+        for cache in ["cache/yt-dlp", "cache/deno"] {
+            std::fs::create_dir_all(dir.path().join(cache)).unwrap();
+        }
+        std::fs::write(dir.path().join("cache/Cache.db"), "the system's").unwrap();
+        let backend = fresh_installation(dir.path());
+        assert_eq!(backend.ytdlp_version().await.unwrap().as_deref(), Some("2026.08.19"));
+
+        backend.clear_data().await.unwrap();
+
+        assert_eq!(backend.ytdlp_version().await.unwrap(), None);
+        assert!(!dir.path().join("support").exists());
+        let cached: Vec<_> = std::fs::read_dir(dir.path().join("cache")).unwrap().flatten().collect();
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].file_name(), "Cache.db");
     }
 
     #[tokio::test]

@@ -10,6 +10,8 @@ Translation uses your own Anthropic API key: paste it in **Settings (⌘,)**, wh
 
 Sites change faster than the app ships, so `yt-dlp` is downloaded rather than bundled: **Settings → Download** fetches the latest official release, verifies its checksum, and installs it under `~/Library/Application Support/tech.radiw.sublate/`. After that the app looks for a newer release once a day, and **Settings → Check for Updates** does the same on demand.
 
+Moving the app to the Trash leaves that copy and the caches behind; **Settings → Clear Data** deletes them first. The API key has its own **Remove** button.
+
 ## Build
 
 Requirements: macOS 26, Xcode 27, Rust, [XcodeGen](https://github.com/yonaskolb/XcodeGen) and [uv](https://docs.astral.sh/uv/) (`brew install xcodegen uv`), and a Developer ID Application certificate (`SIGN_IDENTITY` in the `Makefile`). uv runs the pinned [dmgbuild](https://dmgbuild.readthedocs.io) that lays out the disk image.

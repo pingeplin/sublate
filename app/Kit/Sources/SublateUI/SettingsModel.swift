@@ -55,7 +55,7 @@ public final class SettingsModel {
 
     func saveKey() async {
         let key = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        await storing {
+        await applying {
             try keyStore.save(key)
             apiKeyDraft = ""
             await use(savedKey: key)
@@ -63,7 +63,7 @@ public final class SettingsModel {
     }
 
     func removeKey() async {
-        await storing {
+        await applying {
             try keyStore.remove()
             await use(savedKey: nil)
         }
@@ -74,7 +74,16 @@ public final class SettingsModel {
         await updateYtdlp(force: true)
     }
 
-    private func storing(_ change: () async throws -> Void) async {
+    /// Deletes the downloaded yt-dlp and the caches, which moving the app to the Trash would
+    /// leave behind. The saved key is not part of it: `removeKey` deletes that.
+    func clearData() async {
+        await applying {
+            try await backend.clearData()
+            ytdlp = .missing
+        }
+    }
+
+    private func applying(_ change: () async throws -> Void) async {
         do {
             try await change()
             status = .idle

@@ -72,4 +72,18 @@ impl AppState {
         let load = || async { Services::load(&self.locations, Arc::clone(&self.credentials)) };
         self.services.get_or_try_init(load).await
     }
+
+    /// Deletes what the app wrote under the user's Library, the downloaded yt-dlp and the
+    /// caches, leaving it as it was before its first launch.
+    pub async fn clear_data(&self) -> AppResult<()> {
+        let services = self.services().await?;
+        services.ytdlp.uninstall();
+        services.updater.clear().await?;
+        services.ytdlp.clear_cache().await?;
+        // Deleted only when empty: the system keeps files of its own beside the app's.
+        for dir in [&self.locations.support, &self.locations.cache] {
+            let _ = tokio::fs::remove_dir(dir).await;
+        }
+        Ok(())
+    }
 }
