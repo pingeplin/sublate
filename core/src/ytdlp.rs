@@ -17,8 +17,8 @@ const PROGRESS_TAG: &str = "CT_PROGRESS";
 const PATH_TAG: &str = "CT_PATH";
 
 pub struct YtDlp {
-    /// Replaced when the updater installs a newer release.
-    install: RwLock<Install>,
+    /// `None` until a release is downloaded; replaced when the updater installs a newer one.
+    install: RwLock<Option<Install>>,
     /// Options every invocation starts with.
     base_args: Vec<String>,
     deno_dir: PathBuf,
@@ -37,7 +37,7 @@ enum Source<'a> {
 impl YtDlp {
     /// Everything yt-dlp reads or runs is pinned to the bundle and `cache_dir`: the user's
     /// yt-dlp config, ffmpeg and JS runtime are never picked up.
-    pub fn new(tools: Toolchain, cache_dir: &Path) -> Self {
+    pub fn new(tools: Toolchain, install: Option<Install>, cache_dir: &Path) -> Self {
         let text = |path: &Path| path.to_string_lossy().into_owned();
         #[rustfmt::skip]
         let base_args = vec![
@@ -47,22 +47,22 @@ impl YtDlp {
             "--cache-dir".into(), text(&cache_dir.join("yt-dlp")),
         ];
         Self {
-            install: RwLock::new(tools.ytdlp),
+            install: RwLock::new(install),
             base_args,
             deno_dir: cache_dir.join("deno"),
             last_info: Mutex::new(None),
         }
     }
 
-    pub fn version(&self) -> Version {
-        self.install().version
+    pub fn version(&self) -> Option<Version> {
+        self.install().map(|install| install.version)
     }
 
     pub fn switch_to(&self, install: Install) {
-        *self.install.write().expect("install lock") = install;
+        *self.install.write().expect("install lock") = Some(install);
     }
 
-    fn install(&self) -> Install {
+    fn install(&self) -> Option<Install> {
         self.install.read().expect("install lock").clone()
     }
 
@@ -176,7 +176,7 @@ impl YtDlp {
         cwd: Option<&Path>,
         on_line: impl Fn(&str),
     ) -> AppResult<String> {
-        let program = self.install().program;
+        let program = self.install().ok_or(AppError::YtDlpMissing)?.program;
         let mut command = tokio::process::Command::new(&program);
         command
             .args(args)
@@ -244,13 +244,20 @@ fn tail(text: &str, n: usize) -> String {
 mod tests {
     use super::*;
 
-    fn ytdlp() -> YtDlp {
+    fn install(version: &str) -> Install {
+        Install::at(Version::parse(version).unwrap(), &Path::new("/support").join(version))
+    }
+
+    fn ytdlp_with(install: Option<Install>) -> YtDlp {
         let tools = Toolchain {
-            ytdlp: Install::at(Version::parse("2026.08.19").unwrap(), Path::new("/tools/yt-dlp")),
             ffmpeg_dir: "/tools".into(),
             deno: "/tools/deno".into(),
         };
-        YtDlp::new(tools, Path::new("/cache"))
+        YtDlp::new(tools, install, Path::new("/cache"))
+    }
+
+    fn ytdlp() -> YtDlp {
+        ytdlp_with(Some(install("2026.08.19")))
     }
 
     #[rustfmt::skip]
@@ -297,10 +304,22 @@ mod tests {
     #[test]
     fn switching_installs_changes_the_reported_version() {
         let ytdlp = ytdlp();
-        let newer = Install::at(Version::parse("2026.09.02").unwrap(), Path::new("/support/2026.09.02"));
+        let newer = install("2026.09.02");
         ytdlp.switch_to(newer.clone());
-        assert_eq!(ytdlp.version(), newer.version);
-        assert_eq!(ytdlp.install().program, newer.program);
+        assert_eq!(ytdlp.version(), Some(newer.version.clone()));
+        assert_eq!(ytdlp.install(), Some(newer));
+    }
+
+    #[tokio::test]
+    async fn nothing_runs_until_a_release_is_installed() {
+        let ytdlp = ytdlp_with(None);
+        assert_eq!(ytdlp.version(), None);
+
+        let err = ytdlp.fetch_metadata("https://example.com/v").await.unwrap_err();
+        assert_eq!(err.to_string(), "yt-dlp is not installed; download it in Settings (⌘,)");
+
+        ytdlp.switch_to(install("2026.09.02"));
+        assert_eq!(ytdlp.version(), Some(Version::parse("2026.09.02").unwrap()));
     }
 
     #[test]

@@ -73,7 +73,7 @@ impl Install {
     }
 }
 
-/// yt-dlp releases installed after the app shipped, one directory per version.
+/// The yt-dlp releases the app has downloaded, one directory per version.
 pub struct Installs {
     root: PathBuf,
 }

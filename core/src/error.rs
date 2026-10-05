@@ -2,6 +2,8 @@
 pub enum AppError {
     #[error("yt-dlp failed: {0}")]
     YtDlp(String),
+    #[error("yt-dlp is not installed; download it in Settings (⌘,)")]
+    YtDlpMissing,
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("invalid JSON: {0}")]

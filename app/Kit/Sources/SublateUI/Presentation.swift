@@ -28,6 +28,21 @@ extension CredentialState {
     }
 }
 
+extension YtdlpState {
+    var label: String {
+        switch self {
+        case .checking: "—"
+        case .missing: "Not installed"
+        case .installed(let version): version
+        }
+    }
+
+    /// What the button that fetches the latest release offers.
+    var action: String {
+        self == .missing ? "Download" : "Check for Updates"
+    }
+}
+
 extension VideoMetadata {
     var reference: VideoRef {
         VideoRef(url: url, id: id, title: title)

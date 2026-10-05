@@ -7,6 +7,7 @@ use crate::languages::{find_target, Language, TARGET_LANGUAGES};
 use crate::metadata::{SubtitleTrack, VideoMetadata};
 use crate::services::{AppState, Locations};
 use crate::subtitle_job::{download_and_translate, SubtitleOutput};
+use crate::ytdlp::YtDlp;
 
 /// Flattened to its message, so the UI handles one case whatever the cause.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -20,9 +21,9 @@ type BackendResult<T> = Result<T, BackendError>;
 
 #[derive(uniffi::Record)]
 pub struct BackendConfig {
-    /// Directory holding the bundled yt-dlp, deno, ffmpeg and ffprobe.
+    /// Directory holding the bundled deno, ffmpeg and ffprobe.
     pub tools_dir: String,
-    /// Writable directory for yt-dlp releases installed after the app shipped.
+    /// Writable directory for the yt-dlp releases the app downloads.
     pub support_dir: String,
     pub cache_dir: String,
 }
@@ -122,18 +123,21 @@ impl Backend {
         self.state.credentials().source().await
     }
 
-    pub async fn ytdlp_version(&self) -> BackendResult<String> {
-        Ok(self.state.services().await?.ytdlp.version().to_string())
+    /// The yt-dlp release in use, or `None` until one has been downloaded.
+    pub async fn ytdlp_version(&self) -> BackendResult<Option<String>> {
+        Ok(version_text(&self.state.services().await?.ytdlp))
     }
 
     /// Switches to the latest yt-dlp release when it is newer, and returns the version now in
-    /// use. Unless forced, the release feed is asked at most once a day.
-    pub async fn update_ytdlp(&self, force: bool) -> BackendResult<String> {
+    /// use. Unless forced, the first release is not downloaded and the release feed is asked
+    /// at most once a day.
+    pub async fn update_ytdlp(&self, force: bool) -> BackendResult<Option<String>> {
         let services = self.state.services().await?;
-        if let Some(install) = services.updater.refresh(&services.ytdlp.version(), force).await? {
+        let current = services.ytdlp.version();
+        if let Some(install) = services.updater.refresh(current.as_ref(), force).await? {
             services.ytdlp.switch_to(install);
         }
-        Ok(services.ytdlp.version().to_string())
+        Ok(version_text(&services.ytdlp))
     }
 
     pub async fn fetch_metadata(&self, url: String) -> BackendResult<VideoMetadata> {
@@ -183,6 +187,10 @@ impl Backend {
 
 fn path_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+fn version_text(ytdlp: &YtDlp) -> Option<String> {
+    ytdlp.version().map(|version| version.to_string())
 }
 
 #[cfg(test)]
@@ -238,6 +246,31 @@ mod tests {
     async fn an_incomplete_installation_is_reported_not_fatal() {
         let err = backend().fetch_metadata("https://example.com/v".into()).await.unwrap_err();
         assert!(err.to_string().starts_with("the app's bundled tools are unusable: "), "{err}");
+    }
+
+    /// As the app is right after installing: the bundled tools and nothing downloaded yet.
+    fn fresh_installation(dir: &Path) -> Backend {
+        let tools = dir.join("tools");
+        std::fs::create_dir(&tools).unwrap();
+        for tool in ["deno", "ffmpeg", "ffprobe"] {
+            std::fs::write(tools.join(tool), "").unwrap();
+        }
+        Backend::new(BackendConfig {
+            tools_dir: path_string(&tools),
+            support_dir: path_string(&dir.join("support")),
+            cache_dir: path_string(&dir.join("cache")),
+        })
+    }
+
+    #[tokio::test]
+    async fn a_fresh_installation_has_no_ytdlp_until_the_user_downloads_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = fresh_installation(dir.path());
+
+        assert_eq!(backend.ytdlp_version().await.unwrap(), None);
+        assert_eq!(backend.update_ytdlp(false).await.unwrap(), None);
+        let err = backend.fetch_metadata("https://example.com/v".into()).await.unwrap_err();
+        assert_eq!(err.to_string(), "yt-dlp is not installed; download it in Settings (⌘,)");
     }
 
     #[tokio::test]

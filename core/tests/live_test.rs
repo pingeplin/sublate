@@ -1,5 +1,5 @@
-//! Network-dependent checks against the vendored tools (`make tools`). Run with
-//! `cargo test --test live_test -- --ignored --nocapture`.
+//! Network-dependent checks against the vendored tools (`make tools`) and the yt-dlp release
+//! they download. Run with `cargo test --test live_test -- --ignored --nocapture`.
 
 mod common;
 
@@ -15,7 +15,7 @@ use sublate_core::subtitle_job::translate_subtitle_file;
 use sublate_core::translate::claude::ClaudeTranslator;
 use sublate_core::toolchain::Toolchain;
 use sublate_core::translate::{BatchRequest, Translator};
-use sublate_core::update::{GitHubReleases, Installs, ReleaseFeed, Updater, Version};
+use sublate_core::update::{GitHubReleases, Install, Installs, ReleaseFeed, Updater};
 use sublate_core::ytdlp::YtDlp;
 
 const KOREAN_VIDEO: &str = "https://www.youtube.com/watch?v=SrvYHXmiLAY";
@@ -27,10 +27,27 @@ fn tools() -> Toolchain {
     Toolchain::bundled(&dir).expect("run `make tools` first")
 }
 
+fn updater(dir: &Path) -> Updater {
+    let feed = GitHubReleases::new().unwrap();
+    Updater::new(Box::new(feed), Installs::new(dir.join("yt-dlp")), dir.join("last-check"))
+}
+
+/// The latest release, kept under the target directory so only the first run downloads it
+/// and later runs look for a newer one once a day, as the app does.
+async fn latest_release() -> Install {
+    static DOWNLOADING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _downloading = DOWNLOADING.lock().await;
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let installed = Installs::new(dir.join("yt-dlp")).newest();
+    let current = installed.as_ref().map(|install| &install.version);
+    let newer = updater(dir).refresh(current, installed.is_none()).await.unwrap();
+    newer.or(installed).expect("a yt-dlp release")
+}
+
 /// Caches go to a throwaway directory so each run starts as a fresh install would.
-fn ytdlp() -> (YtDlp, tempfile::TempDir) {
+async fn ytdlp() -> (YtDlp, tempfile::TempDir) {
     let cache = tempfile::tempdir().unwrap();
-    (YtDlp::new(tools(), cache.path()), cache)
+    (YtDlp::new(tools(), Some(latest_release().await), cache.path()), cache)
 }
 
 fn translator() -> ClaudeTranslator {
@@ -40,7 +57,7 @@ fn translator() -> ClaudeTranslator {
 #[tokio::test]
 #[ignore]
 async fn ytdlp_fetches_metadata_and_downloads_auto_subtitle() {
-    let (ytdlp, _cache) = ytdlp();
+    let (ytdlp, _cache) = ytdlp().await;
     let meta = ytdlp.fetch_metadata(KOREAN_VIDEO).await.unwrap();
     let track = meta.subtitles.iter().find(|t| t.kind == TrackKind::Auto).unwrap();
 
@@ -55,7 +72,7 @@ async fn ytdlp_fetches_metadata_and_downloads_auto_subtitle() {
 #[tokio::test]
 #[ignore]
 async fn ytdlp_downloads_video_literally_named_into_any_directory() {
-    let (ytdlp, _cache) = ytdlp();
+    let (ytdlp, _cache) = ytdlp().await;
     let meta = ytdlp.fetch_metadata(SHORT_VIDEO).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
     let out = OutputLocation::new(dir.path().join("dir $HOME 100%"), "Save $HOME 100%?", &meta.id);
@@ -88,7 +105,7 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
 #[tokio::test]
 #[ignore]
 async fn ytdlp_rejects_playlists() {
-    let (ytdlp, _cache) = ytdlp();
+    let (ytdlp, _cache) = ytdlp().await;
     let err = ytdlp.fetch_metadata(PLAYLIST).await.unwrap_err();
     println!("{err}");
     assert!(matches!(err, sublate_core::error::AppError::Unsupported(_)));
@@ -96,21 +113,17 @@ async fn ytdlp_rejects_playlists() {
 
 #[tokio::test]
 #[ignore]
-async fn updater_installs_the_latest_release_from_github() {
+async fn updater_installs_the_first_release_from_github() {
     let dir = tempfile::tempdir().unwrap();
-    let installs = || Installs::new(dir.path().join("yt-dlp"));
-    let feed = GitHubReleases::new().unwrap();
-    let latest = feed.latest().await.unwrap().version;
-    let updater = Updater::new(Box::new(feed), installs(), dir.path().join("last-check"));
+    let latest = GitHubReleases::new().unwrap().latest().await.unwrap().version;
 
-    let outdated = Version::parse("2020.01.01").unwrap();
-    let install = updater.refresh(&outdated, false).await.unwrap().expect("a newer release");
+    let install = updater(dir.path()).refresh(None, true).await.unwrap().expect("a first release");
     println!("installed {} at {}", install.version, install.program.display());
     assert_eq!(install.version, latest);
-    assert_eq!(installs().newest(), Some(install.clone()));
+    assert_eq!(Installs::new(dir.path().join("yt-dlp")).newest(), Some(install.clone()));
 
     let cache = tempfile::tempdir().unwrap();
-    let ytdlp = YtDlp::new(Toolchain { ytdlp: install, ..tools() }, cache.path());
+    let ytdlp = YtDlp::new(tools(), Some(install), cache.path());
     let meta = ytdlp.fetch_metadata(SHORT_VIDEO).await.unwrap();
     assert_eq!(meta.title, "Me at the zoo");
 }
