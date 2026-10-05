@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
+use crate::disk;
 use crate::error::{AppError, AppResult};
 use crate::file_name::OutputLocation;
 use crate::metadata::{parse_metadata, SubtitleTrack, TrackKind, VideoMetadata};
@@ -21,6 +22,7 @@ pub struct YtDlp {
     install: RwLock<Option<Install>>,
     /// Options every invocation starts with.
     base_args: Vec<String>,
+    cache_dir: PathBuf,
     deno_dir: PathBuf,
     /// `-J` output of the last fetched video, keyed by its page URL.
     last_info: Mutex<Option<(String, Arc<str>)>>,
@@ -39,17 +41,20 @@ impl YtDlp {
     /// yt-dlp config, ffmpeg and JS runtime are never picked up.
     pub fn new(tools: Toolchain, install: Option<Install>, cache_dir: &Path) -> Self {
         let text = |path: &Path| path.to_string_lossy().into_owned();
+        let deno_dir = cache_dir.join("deno");
+        let cache_dir = cache_dir.join("yt-dlp");
         #[rustfmt::skip]
         let base_args = vec![
             "--ignore-config".into(), "--no-playlist".into(),
             "--ffmpeg-location".into(), text(&tools.ffmpeg_dir),
             "--js-runtimes".into(), format!("deno:{}", text(&tools.deno)),
-            "--cache-dir".into(), text(&cache_dir.join("yt-dlp")),
+            "--cache-dir".into(), text(&cache_dir),
         ];
         Self {
             install: RwLock::new(install),
             base_args,
-            deno_dir: cache_dir.join("deno"),
+            cache_dir,
+            deno_dir,
             last_info: Mutex::new(None),
         }
     }
@@ -60,6 +65,17 @@ impl YtDlp {
 
     pub fn switch_to(&self, install: Install) {
         *self.install.write().expect("install lock") = Some(install);
+    }
+
+    /// Back to having no release, as after its files are deleted.
+    pub fn uninstall(&self) {
+        *self.install.write().expect("install lock") = None;
+    }
+
+    /// Deletes what yt-dlp and deno cached; both fill it again as they run.
+    pub async fn clear_cache(&self) -> AppResult<()> {
+        disk::delete(&self.cache_dir).await?;
+        Ok(disk::delete(&self.deno_dir).await?)
     }
 
     fn install(&self) -> Option<Install> {
@@ -248,12 +264,15 @@ mod tests {
         Install::at(Version::parse(version).unwrap(), &Path::new("/support").join(version))
     }
 
-    fn ytdlp_with(install: Option<Install>) -> YtDlp {
-        let tools = Toolchain {
+    fn tools() -> Toolchain {
+        Toolchain {
             ffmpeg_dir: "/tools".into(),
             deno: "/tools/deno".into(),
-        };
-        YtDlp::new(tools, install, Path::new("/cache"))
+        }
+    }
+
+    fn ytdlp_with(install: Option<Install>) -> YtDlp {
+        YtDlp::new(tools(), install, Path::new("/cache"))
     }
 
     fn ytdlp() -> YtDlp {
@@ -320,6 +339,21 @@ mod tests {
 
         ytdlp.switch_to(install("2026.09.02"));
         assert_eq!(ytdlp.version(), Some(Version::parse("2026.09.02").unwrap()));
+    }
+
+    #[tokio::test]
+    async fn uninstalling_and_clearing_the_cache_leave_nothing_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let ytdlp = YtDlp::new(tools(), Some(install("2026.08.19")), dir.path());
+        for cache in ["yt-dlp/youtube-sigfuncs", "deno/npm"] {
+            std::fs::create_dir_all(dir.path().join(cache)).unwrap();
+        }
+
+        ytdlp.uninstall();
+        ytdlp.clear_cache().await.unwrap();
+
+        assert_eq!(ytdlp.version(), None);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 
     #[test]

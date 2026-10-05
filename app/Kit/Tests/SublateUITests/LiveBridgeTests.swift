@@ -36,6 +36,12 @@ struct LiveBridgeTests {
         #expect(model.progress?.subtitles.fraction == 1)
         #expect(model.files.count == 3)
         #expect(model.files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.filePath) })
+
+        await settings.clearData()
+
+        #expect(settings.ytdlp == .missing)
+        #expect(!FileManager.default.fileExists(atPath: directory.appending(path: "support").filePath))
+        #expect(!FileManager.default.fileExists(atPath: directory.appending(path: "cache").filePath))
     }
 
     private static let vendoredTools = URL(filePath: #filePath)

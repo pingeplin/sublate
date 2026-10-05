@@ -11,6 +11,7 @@ use tokio::io::AsyncReadExt;
 pub use github::GitHubReleases;
 pub use installs::{Install, Installs, Version, PROGRAM};
 
+use crate::disk;
 use crate::error::{AppError, AppResult};
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -66,6 +67,14 @@ impl Updater {
         };
         self.mark_checked(&release.version).await?;
         Ok(install)
+    }
+
+    /// Deletes every installed release and the record of the last check, once any download
+    /// in progress has finished.
+    pub async fn clear(&self) -> AppResult<()> {
+        let _running = self.running.lock().await;
+        disk::delete(self.installs.root()).await?;
+        Ok(disk::delete(&self.marker).await?)
     }
 
     async fn mark_checked(&self, latest: &Version) -> AppResult<()> {
@@ -223,6 +232,19 @@ mod tests {
         let install = fixture.updater.refresh(None, true).await.unwrap().unwrap();
         assert_eq!(install.version, version("2026.09.02"));
         assert_eq!(fixture.installed(), Some(install));
+    }
+
+    #[tokio::test]
+    async fn clearing_deletes_the_installs_and_forgets_the_last_check() {
+        let fixture = Fixture::offering("2026.09.02").await;
+        fixture.updater.refresh(None, true).await.unwrap();
+
+        fixture.updater.clear().await.unwrap();
+        fixture.updater.clear().await.unwrap();
+
+        assert_eq!(fixture.installed(), None);
+        assert!(!fixture.dir.path().join("yt-dlp").exists());
+        assert!(!fixture.dir.path().join("support").join("last-check").exists());
     }
 
     #[tokio::test]

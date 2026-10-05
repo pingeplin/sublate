@@ -127,6 +127,29 @@ struct SettingsModelTests {
         #expect(model.status == .failure("yt-dlp update failed: offline"))
     }
 
+    @Test func clearingDataLeavesYtdlpToBeDownloadedAgainAndKeepsTheKey() async {
+        keyStore.key = "sk-ant-saved"
+        await model.start()
+
+        await model.clearData()
+
+        #expect(backend.clearRequests == 1)
+        #expect(model.ytdlp == .missing)
+        #expect(model.status == .idle)
+        #expect(keyStore.key == "sk-ant-saved")
+        #expect(model.hasSavedKey)
+    }
+
+    @Test func aFailedClearIsReported() async {
+        backend.clearing = .failure(.Failed(message: "I/O error: permission denied"))
+        await model.start()
+
+        await model.clearData()
+
+        #expect(model.ytdlp == .installed(version: "2026.09.02"))
+        #expect(model.status == .failure("I/O error: permission denied"))
+    }
+
     @Test func savingStoresTheTrimmedKeyAndClearsTheField() async {
         model.apiKeyDraft = "  sk-ant-new\n"
         #expect(model.canSaveKey)

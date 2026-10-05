@@ -1,4 +1,5 @@
 pub mod auth;
+mod disk;
 pub mod error;
 mod ffi;
 pub mod file_name;

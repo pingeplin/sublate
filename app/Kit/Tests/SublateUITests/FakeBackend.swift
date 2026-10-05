@@ -11,6 +11,7 @@ final class FakeBackend: BackendProtocol {
     var shellCredential: String? = "ant profile 'contents-title'"
     var installedYtdlp: Result<String?, BackendError> = .success("2026.08.19")
     var latestYtdlp: Result<String, BackendError> = .success("2026.09.02")
+    var clearing: Result<Void, BackendError> = .success(())
     var metadata: Result<VideoMetadata, BackendError> = .success(.sample())
     var video: Result<String, BackendError> = .success("/out/Title [abc].mp4")
     var subtitles: Result<SubtitleFiles, BackendError> = .success(
@@ -21,6 +22,7 @@ final class FakeBackend: BackendProtocol {
 
     private(set) var apiKey: String?
     private(set) var updateRequests: [Bool] = []
+    private(set) var clearRequests = 0
     private(set) var fetchedURLs: [String] = []
     private(set) var videoRequests: [VideoRequest] = []
     private(set) var subtitleRequests: [SubtitleRequest] = []
@@ -58,6 +60,12 @@ final class FakeBackend: BackendProtocol {
         updateRequests.append(force)
         if try installedYtdlp.get() == nil && !force { return nil }
         return try latestYtdlp.get()
+    }
+
+    func clearData() async throws {
+        clearRequests += 1
+        try clearing.get()
+        installedYtdlp = .success(nil)
     }
 
     func fetchMetadata(url: String) async throws -> VideoMetadata {

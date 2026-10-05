@@ -46,6 +46,17 @@ public struct SettingsView: View {
                 Text("Videos are fetched with yt-dlp, downloaded from its official releases and kept up to date.")
             }
 
+            Section {
+                LabeledContent("Downloaded yt-dlp and caches") {
+                    Button("Clear Data", role: .destructive) {
+                        Task { await model.clearData() }
+                    }
+                    .disabled(model.isUpdating)
+                }
+            } footer: {
+                Text("Moving Sublate to the Trash leaves these behind, so clear them first. Your API key is removed separately, above.")
+            }
+
             if model.status != .idle {
                 Section {
                     StatusLine(status: model.status, isBusy: false)
