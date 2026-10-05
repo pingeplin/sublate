@@ -3,6 +3,7 @@ name = "sublate-core"
 version = "0.1.0"
 description = "Fetch videos and translate subtitles"
 authors = ["eplin"]
+license = "GPL-3.0-or-later"
 edition = "2021"
 
 [lib]

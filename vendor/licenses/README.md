@@ -1,5 +1,7 @@
 # Third-party software
 
+Sublate itself is licensed under GPL-3.0-or-later (`GPL-3.0.txt`).
+
 Sublate ships these programs unmodified inside the app (`Contents/Resources/tools`) and runs them as separate processes. Each stays under its own licence.
 
 | Program | Version | Licence | Binary from | Source |

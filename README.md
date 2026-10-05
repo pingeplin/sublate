@@ -63,3 +63,13 @@ LIVE=1 swift test --package-path app/Kit                                        
 ```
 
 The live tests run the vendored tools (`make tools`), the same binaries the app ships.
+
+## License
+
+Copyright (C) 2026 YingPing Lin
+
+Sublate is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed without any warranty; see [`LICENSE`](LICENSE) for the full text.
+
+The bundled tools stay under their own licences, listed in [`vendor/licenses/README.md`](vendor/licenses/README.md).
+
+The name "Sublate" and the app icon are trademarks of YingPing Lin and are not licensed under the GPL. Forks and modified builds must use a different name and icon.
