@@ -12,7 +12,7 @@ Sites change faster than the app ships, so once a day the app looks for a newer 
 
 ## Build
 
-Requirements: macOS 26, Xcode 27, Rust, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), and a Developer ID Application certificate (`SIGN_IDENTITY` in the `Makefile`).
+Requirements: macOS 26, Xcode 27, Rust, [XcodeGen](https://github.com/yonaskolb/XcodeGen) and [uv](https://docs.astral.sh/uv/) (`brew install xcodegen uv`), and a Developer ID Application certificate (`SIGN_IDENTITY` in the `Makefile`). uv runs the pinned [dmgbuild](https://dmgbuild.readthedocs.io) that lays out the disk image.
 
 ```sh
 make run       # downloads and signs the bundled tools, builds the Rust core and the app, then opens it
@@ -40,7 +40,7 @@ Developers can skip the saved key: without one, the app falls back to `ANTHROPIC
 | `app/Kit/` | Swift package: `SublateCore` (generated bindings over the static library) and `SublateUI` (view model and SwiftUI views). |
 | `app/Sublate/` | The app shell; `app/project.yml` is the XcodeGen spec. |
 | `vendor/` | Pinned third-party tools: `fetch.sh` downloads, verifies and signs them into `vendor/tools`, which the app bundles as `Contents/Resources/tools`. |
-| `scripts/package.sh` | Builds, signs and optionally notarizes the disk image. |
+| `scripts/package.sh` | Builds, signs and optionally notarizes the disk image; `dmg.settings.py` is its drag-to-Applications window layout. |
 
 ## Output
 
