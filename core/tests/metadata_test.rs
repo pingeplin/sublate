@@ -1,8 +1,8 @@
 mod common;
 
 use common::{fixture, ko_auto_track};
-use contents_title_core::error::AppError;
-use contents_title_core::metadata::{parse_metadata, SubtitleTrack, TrackKind};
+use sublate_core::error::AppError;
+use sublate_core::metadata::{parse_metadata, SubtitleTrack, TrackKind};
 
 #[test]
 fn auto_captions_expose_only_the_spoken_language_track() {

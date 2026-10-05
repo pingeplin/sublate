@@ -1,29 +1,29 @@
-name: ContentsTitle
+name: Sublate
 options:
   deploymentTarget:
     macOS: "26.0"
 packages:
-  ContentsTitleKit:
+  SublateKit:
     path: Kit
 targets:
-  ContentsTitle:
+  Sublate:
     type: application
     platform: macOS
     sources:
-      - ContentsTitle
+      - Sublate
     dependencies:
-      - package: ContentsTitleKit
-        product: ContentsTitleUI
+      - package: SublateKit
+        product: SublateUI
     settings:
       base:
-        PRODUCT_NAME: Contents Title
-        PRODUCT_MODULE_NAME: ContentsTitle
-        PRODUCT_BUNDLE_IDENTIFIER: com.eplin.contentstitle
+        PRODUCT_NAME: Sublate
+        PRODUCT_MODULE_NAME: Sublate
+        PRODUCT_BUNDLE_IDENTIFIER: tech.radiw.sublate
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_FILE: ContentsTitle/Info.plist
+        INFOPLIST_FILE: Sublate/Info.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         # Not sandboxed: the backend runs yt-dlp, ffmpeg and ant from the login-shell PATH.
         CODE_SIGN_IDENTITY: "-"

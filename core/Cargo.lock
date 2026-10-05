@@ -286,22 +286,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "contents-title-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "unicode-normalization",
- "uniffi",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1443,6 +1427,22 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "sublate-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "unicode-normalization",
+ "uniffi",
+]
 
 [[package]]
 name = "subtle"

@@ -5,12 +5,12 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use common::{fixture_path, ko_auto_track};
-use contents_title_core::error::{AppError, AppResult};
-use contents_title_core::languages::find_target;
-use contents_title_core::metadata::{SubtitleTrack, TrackKind};
-use contents_title_core::subtitle::{parse_srt, Cue};
-use contents_title_core::subtitle_job::translate_subtitle_file;
-use contents_title_core::translate::{translate_cues, BatchRequest, TranslationPlan, Translator};
+use sublate_core::error::{AppError, AppResult};
+use sublate_core::languages::find_target;
+use sublate_core::metadata::{SubtitleTrack, TrackKind};
+use sublate_core::subtitle::{parse_srt, Cue};
+use sublate_core::subtitle_job::translate_subtitle_file;
+use sublate_core::translate::{translate_cues, BatchRequest, TranslationPlan, Translator};
 
 /// (context, lines, source language, target language)
 type Recorded = (Vec<String>, Vec<String>, String, String);

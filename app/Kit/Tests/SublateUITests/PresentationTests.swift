@@ -1,8 +1,8 @@
-import ContentsTitleCore
+import SublateCore
 import Foundation
 import Testing
 
-@testable import ContentsTitleUI
+@testable import SublateUI
 
 struct PresentationTests {
     @Test(arguments: [(75.0, "1:15"), (59.6, "1:00"), (3725.0, "1:02:05")])
@@ -36,7 +36,7 @@ struct PresentationTests {
     }
 
     @Test func pathsUnderHomeAreAbbreviated() {
-        let url = URL.homeDirectory.appending(path: "Downloads/contents title")
-        #expect(url.abbreviatedPath == "~/Downloads/contents title")
+        let url = URL.homeDirectory.appending(path: "Downloads/sublate videos")
+        #expect(url.abbreviatedPath == "~/Downloads/sublate videos")
     }
 }

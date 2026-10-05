@@ -1,8 +1,8 @@
-import ContentsTitleCore
+import SublateCore
 import Foundation
 import Testing
 
-@testable import ContentsTitleUI
+@testable import SublateUI
 
 /// Drives the real Rust backend, so it hits YouTube and the Claude API. Run with `LIVE=1 swift test`.
 @MainActor

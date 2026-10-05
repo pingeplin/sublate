@@ -1,4 +1,4 @@
-import ContentsTitleCore
+import SublateCore
 import SwiftUI
 
 struct VideoSummary: View {

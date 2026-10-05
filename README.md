@@ -1,4 +1,4 @@
-# Contents Title
+# Sublate
 
 Native macOS app (SwiftUI front end, Rust core): paste a video URL, inspect its metadata with `yt-dlp`, download the video, and translate a subtitle track into another language with Claude. Subtitles are written as standalone `.srt` files — never merged into the video.
 
@@ -20,19 +20,19 @@ Native macOS app (SwiftUI front end, Rust core): paste a video URL, inspect its 
 make run   # builds the Rust core, generates the Swift bindings and Xcode project, then opens the app
 ```
 
-`make project` alone produces `app/ContentsTitle.xcodeproj` for working in Xcode; rerun `make core` after changing Rust code.
+`make project` alone produces `app/Sublate.xcodeproj` for working in Xcode; rerun `make core` after changing Rust code.
 
 ## Layout
 
 | Path | Content |
 | --- | --- |
 | `core/` | Rust crate: yt-dlp, subtitle parsing, Claude translation. `src/ffi.rs` is the only surface the UI sees, exported through [UniFFI](https://mozilla.github.io/uniffi-rs/). |
-| `app/Kit/` | Swift package: `ContentsTitleCore` (generated bindings over the static library) and `ContentsTitleUI` (view model and SwiftUI views). |
-| `app/ContentsTitle/` | The app shell; `app/project.yml` is the XcodeGen spec. |
+| `app/Kit/` | Swift package: `SublateCore` (generated bindings over the static library) and `SublateUI` (view model and SwiftUI views). |
+| `app/Sublate/` | The app shell; `app/project.yml` is the XcodeGen spec. |
 
 ## Output
 
-Files land in `~/Downloads/contents-title/` by default, named `<title> [<id>]` so same-titled videos never collide (reserved characters such as `? / : $` become full-width look-alikes; the id alone is used if the title is empty). Long titles are shortened so every name stays within 255 bytes in decomposed (NFD) UTF-8, the limit Synology Drive enforces:
+Files land in `~/Downloads/Sublate/` by default, named `<title> [<id>]` so same-titled videos never collide (reserved characters such as `? / : $` become full-width look-alikes; the id alone is used if the title is empty). Long titles are shortened so every name stays within 255 bytes in decomposed (NFD) UTF-8, the limit Synology Drive enforces:
 
 | File | Content |
 | --- | --- |

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use contents_title_core::metadata::{SubtitleTrack, TrackKind};
+use sublate_core::metadata::{SubtitleTrack, TrackKind};
 
 pub fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)

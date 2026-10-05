@@ -1,4 +1,4 @@
-import ContentsTitleCore
+import SublateCore
 import Foundation
 import Observation
 
@@ -6,7 +6,7 @@ import Observation
 @Observable
 public final class ContentModel {
     static let defaultTarget = "zh-TW"
-    static let outputFolder = "contents-title"
+    static let outputFolder = "Sublate"
 
     var urlText = ""
     var sourceTrack: SubtitleTrack?

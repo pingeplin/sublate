@@ -1,12 +1,12 @@
-import ContentsTitleUI
+import SublateUI
 import SwiftUI
 
 @main
-struct ContentsTitleApp: App {
+struct SublateApp: App {
     @State private var model = ContentModel()
 
     var body: some Scene {
-        Window("Contents Title", id: "main") {
+        Window("Sublate", id: "main") {
             ContentView(model: model)
                 .frame(minWidth: 520, minHeight: 360)
         }

@@ -1,4 +1,4 @@
-import ContentsTitleCore
+import SublateCore
 
 /// Carries progress the backend reports off the main thread to a single in-order consumer.
 /// Only the latest value matters, so a slow consumer skips stale ones.

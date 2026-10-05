@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 
-const MARKER: &str = "__CONTENTS_TITLE_ENV__";
+const MARKER: &str = "__SUBLATE_ENV__";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Apps launched from Finder inherit a minimal environment; PATH (Homebrew, pyenv, nvm)

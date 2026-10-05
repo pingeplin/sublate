@@ -1,4 +1,4 @@
-import ContentsTitleCore
+import SublateCore
 
 @MainActor
 final class FakeBackend: BackendProtocol {

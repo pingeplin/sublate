@@ -1,14 +1,14 @@
 MACOSX_DEPLOYMENT_TARGET := 26.0
 export MACOSX_DEPLOYMENT_TARGET
 
-CRATE := contents_title_core
+CRATE := sublate_core
 STATIC_LIB := core/target/release/lib$(CRATE).a
 HEADERS := core/target/bindings/Headers
 KIT := app/Kit
 XCFRAMEWORK := $(KIT)/$(CRATE)FFI.xcframework
-BINDINGS := $(KIT)/Sources/ContentsTitleCore
+BINDINGS := $(KIT)/Sources/SublateCore
 DERIVED := app/build
-APP := $(DERIVED)/Build/Products/Release/Contents Title.app
+APP := $(DERIVED)/Build/Products/Release/Sublate.app
 
 # The generator builds in the debug profile so its `cli` feature never leaks into the release
 # archive, and runs inside the crate because it reads `cargo metadata`.
@@ -32,7 +32,7 @@ project: core
 	cd app && xcodegen generate
 
 build: project
-	xcodebuild -project app/ContentsTitle.xcodeproj -scheme ContentsTitle \
+	xcodebuild -project app/Sublate.xcodeproj -scheme Sublate \
 		-configuration Release -derivedDataPath $(DERIVED) build
 
 run: build
@@ -44,4 +44,4 @@ test: core
 
 clean:
 	cargo clean --manifest-path core/Cargo.toml
-	rm -rf $(DERIVED) $(XCFRAMEWORK) $(BINDINGS) app/ContentsTitle.xcodeproj $(KIT)/.build
+	rm -rf $(DERIVED) $(XCFRAMEWORK) $(BINDINGS) app/Sublate.xcodeproj $(KIT)/.build

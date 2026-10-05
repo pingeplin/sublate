@@ -1,7 +1,7 @@
 mod common;
 
 use common::fixture;
-use contents_title_core::subtitle::{absorb_empty_cues, collapse_rolling, parse_srt, to_srt, Cue};
+use sublate_core::subtitle::{absorb_empty_cues, collapse_rolling, parse_srt, to_srt, Cue};
 
 fn cue(start_ms: u64, end_ms: u64, text: &str) -> Cue {
     Cue { start_ms, end_ms, text: text.into() }

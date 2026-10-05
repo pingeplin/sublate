@@ -2,21 +2,21 @@
 import PackageDescription
 
 let package = Package(
-    name: "ContentsTitleKit",
+    name: "SublateKit",
     platforms: [.macOS(.v26)],
-    products: [.library(name: "ContentsTitleUI", targets: ["ContentsTitleUI"])],
+    products: [.library(name: "SublateUI", targets: ["SublateUI"])],
     targets: [
-        .binaryTarget(name: "contents_title_coreFFI", path: "contents_title_coreFFI.xcframework"),
+        .binaryTarget(name: "sublate_coreFFI", path: "sublate_coreFFI.xcframework"),
         .target(
-            name: "ContentsTitleCore",
-            dependencies: ["contents_title_coreFFI"],
+            name: "SublateCore",
+            dependencies: ["sublate_coreFFI"],
             linkerSettings: [
                 .linkedFramework("Security"),
                 .linkedFramework("CoreFoundation"),
                 .linkedLibrary("iconv"),
             ]
         ),
-        .target(name: "ContentsTitleUI", dependencies: ["ContentsTitleCore"]),
-        .testTarget(name: "ContentsTitleUITests", dependencies: ["ContentsTitleUI"]),
+        .target(name: "SublateUI", dependencies: ["SublateCore"]),
+        .testTarget(name: "SublateUITests", dependencies: ["SublateUI"]),
     ]
 )

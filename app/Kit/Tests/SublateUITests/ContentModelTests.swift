@@ -1,8 +1,8 @@
-import ContentsTitleCore
+import SublateCore
 import Foundation
 import Testing
 
-@testable import ContentsTitleUI
+@testable import SublateUI
 
 @MainActor
 struct ContentModelTests {

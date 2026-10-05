@@ -3,16 +3,16 @@
 mod common;
 
 use common::{fixture_path, ko_auto_track};
-use contents_title_core::auth::resolve_provider;
-use contents_title_core::file_name::OutputLocation;
-use contents_title_core::languages::find_target;
-use contents_title_core::metadata::TrackKind;
-use contents_title_core::process_env::ProcessEnv;
-use contents_title_core::subtitle::parse_srt;
-use contents_title_core::subtitle_job::translate_subtitle_file;
-use contents_title_core::translate::claude::ClaudeTranslator;
-use contents_title_core::translate::{BatchRequest, Translator};
-use contents_title_core::ytdlp::YtDlp;
+use sublate_core::auth::resolve_provider;
+use sublate_core::file_name::OutputLocation;
+use sublate_core::languages::find_target;
+use sublate_core::metadata::TrackKind;
+use sublate_core::process_env::ProcessEnv;
+use sublate_core::subtitle::parse_srt;
+use sublate_core::subtitle_job::translate_subtitle_file;
+use sublate_core::translate::claude::ClaudeTranslator;
+use sublate_core::translate::{BatchRequest, Translator};
+use sublate_core::ytdlp::YtDlp;
 
 const KOREAN_VIDEO: &str = "https://www.youtube.com/watch?v=SrvYHXmiLAY";
 const SHORT_VIDEO: &str = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
@@ -85,7 +85,7 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
 async fn ytdlp_rejects_playlists() {
     let err = ytdlp().await.fetch_metadata(PLAYLIST).await.unwrap_err();
     println!("{err}");
-    assert!(matches!(err, contents_title_core::error::AppError::Unsupported(_)));
+    assert!(matches!(err, sublate_core::error::AppError::Unsupported(_)));
 }
 
 #[tokio::test]
