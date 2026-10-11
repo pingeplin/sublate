@@ -9,8 +9,8 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
         TargetLanguage(code: "en", native: "English"),
     ]
 
-    /// What the shell offers when no key is saved in the app.
-    var shellCredential: String? = "ant profile 'contents-title'"
+    /// What the shell offers when no key is saved in the app and no profile is chosen.
+    var shellCredential: String? = "the active ant profile"
     var installedYtdlp: Result<String?, BackendError> = .success("2026.08.19")
     var latestYtdlp: Result<String, BackendError> = .success("2026.09.02")
     var clearing: Result<Void, BackendError> = .success(())
@@ -24,6 +24,7 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     var translationProgress: [(done: UInt64, total: UInt64)] = [(1, 2), (2, 2)]
 
     private(set) var apiKey: String?
+    private(set) var antProfile: String?
     private(set) var updateRequests: [Bool] = []
     private(set) var clearRequests = 0
     private(set) var updateChecks: [String] = []
@@ -51,8 +52,15 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
         MainActor.assumeIsolated { apiKey = key }
     }
 
+    nonisolated func setAntProfile(name: String?) {
+        MainActor.assumeIsolated { antProfile = name }
+    }
+
+    /// Like the real backend, a chosen profile matters only when the shell offers `ant`.
     func credentialSource() async -> String? {
-        apiKey == nil ? shellCredential : "your saved API key"
+        if apiKey != nil { return "your saved API key" }
+        guard let shellCredential else { return nil }
+        return antProfile.map { "ant profile '\($0)'" } ?? shellCredential
     }
 
     func ytdlpVersion() async throws -> String? {

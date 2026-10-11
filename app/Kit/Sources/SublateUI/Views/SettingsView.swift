@@ -32,6 +32,18 @@ public struct SettingsView: View {
             }
 
             Section {
+                TextField("ant profile", text: $model.antProfileDraft, prompt: Text("Active profile"))
+                    .onSubmit(saveProfile)
+                HStack {
+                    Spacer()
+                    Button("Save", action: saveProfile)
+                        .disabled(!model.canSaveAntProfile)
+                }
+            } footer: {
+                Text("Without a key, Sublate gets a token from the ant command line tool, if it is installed. Leave the profile empty to use the one that is active in ant.")
+            }
+
+            Section {
                 LabeledContent("Version") {
                     if model.isUpdating {
                         ProgressView().controlSize(.small)
@@ -102,5 +114,10 @@ public struct SettingsView: View {
     private func save() {
         guard model.canSaveKey else { return }
         Task { await model.saveKey() }
+    }
+
+    private func saveProfile() {
+        guard model.canSaveAntProfile else { return }
+        Task { await model.saveAntProfile() }
     }
 }

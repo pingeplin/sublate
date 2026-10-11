@@ -17,7 +17,7 @@ struct LiveBridgeTests {
             supportDir: directory.appending(path: "support").filePath,
             cacheDir: directory.appending(path: "cache").filePath
         ))
-        let settings = SettingsModel(backend: backend, keyStore: FakeKeyStore())
+        let settings = SettingsModel(backend: backend, keyStore: FakeKeyStore(), profileStore: FakeProfileStore())
         let model = ContentModel(backend: backend, outputDirectory: directory.appending(path: "out"))
 
         await settings.start()
