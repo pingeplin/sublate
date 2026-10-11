@@ -25,7 +25,7 @@ targets:
         PRODUCT_NAME: Sublate
         PRODUCT_MODULE_NAME: Sublate
         PRODUCT_BUNDLE_IDENTIFIER: tech.radiw.sublate
-        MARKETING_VERSION: 0.1.0
+        MARKETING_VERSION: 0.2.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
@@ -40,3 +40,7 @@ targets:
         # Notarization needs a secure timestamp and rejects the debugging entitlement.
         OTHER_CODE_SIGN_FLAGS: --timestamp
         CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+      configs:
+        Release:
+          # Strips the symbols, which name the build folder; a plain build leaves them in.
+          DEPLOYMENT_POSTPROCESSING: YES
