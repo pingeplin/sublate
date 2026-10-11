@@ -23,4 +23,9 @@ protocol SettingsBackend: Sendable {
     func clearData() async throws
 }
 
-extension Backend: ContentBackend, SettingsBackend {}
+/// What the check for a newer Sublate asks of the backend.
+protocol AppUpdateBackend: Sendable {
+    func checkAppUpdate(currentVersion: String) async throws -> AppUpdate?
+}
+
+extension Backend: ContentBackend, SettingsBackend, AppUpdateBackend {}

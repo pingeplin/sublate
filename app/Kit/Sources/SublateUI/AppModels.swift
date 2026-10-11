@@ -6,6 +6,7 @@ import Foundation
 public struct AppModels {
     public let content: ContentModel
     public let settings: SettingsModel
+    public let updates: AppUpdateModel
 
     public init(bundle: Bundle = .main) {
         let identifier = bundle.bundleIdentifier ?? "tech.radiw.sublate"
@@ -17,6 +18,14 @@ public struct AppModels {
             )
         )
         settings = SettingsModel(backend: backend, keyStore: KeychainAPIKeyStore(service: identifier))
+        updates = AppUpdateModel(backend: backend, currentVersion: bundle.marketingVersion)
+    }
+}
+
+extension Bundle {
+    /// The version the user knows the app by; code that runs outside an app bundle has none.
+    var marketingVersion: String {
+        infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     }
 }
 

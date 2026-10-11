@@ -3,7 +3,7 @@ import SublateCore
 @testable import SublateUI
 
 @MainActor
-final class FakeBackend: ContentBackend, SettingsBackend {
+final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     nonisolated static let languages = [
         TargetLanguage(code: "zh-TW", native: "繁體中文（台灣）"),
         TargetLanguage(code: "en", native: "English"),
@@ -14,6 +14,7 @@ final class FakeBackend: ContentBackend, SettingsBackend {
     var installedYtdlp: Result<String?, BackendError> = .success("2026.08.19")
     var latestYtdlp: Result<String, BackendError> = .success("2026.09.02")
     var clearing: Result<Void, BackendError> = .success(())
+    var appUpdate: Result<AppUpdate?, BackendError> = .success(nil)
     var metadata: Result<VideoMetadata, BackendError> = .success(.sample())
     var video: Result<String, BackendError> = .success("/out/Title [abc].mp4")
     var subtitles: Result<SubtitleFiles, BackendError> = .success(
@@ -25,6 +26,7 @@ final class FakeBackend: ContentBackend, SettingsBackend {
     private(set) var apiKey: String?
     private(set) var updateRequests: [Bool] = []
     private(set) var clearRequests = 0
+    private(set) var updateChecks: [String] = []
     private(set) var fetchedURLs: [String] = []
     private(set) var videoRequests: [VideoRequest] = []
     private(set) var subtitleRequests: [SubtitleRequest] = []
@@ -68,6 +70,13 @@ final class FakeBackend: ContentBackend, SettingsBackend {
         clearRequests += 1
         try clearing.get()
         installedYtdlp = .success(nil)
+    }
+
+    /// Like the real backend, the answer takes a moment.
+    func checkAppUpdate(currentVersion: String) async throws -> AppUpdate? {
+        updateChecks.append(currentVersion)
+        await Task.yield()
+        return try appUpdate.get()
     }
 
     func fetchMetadata(url: String) async throws -> VideoMetadata {

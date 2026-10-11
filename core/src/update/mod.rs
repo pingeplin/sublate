@@ -1,3 +1,4 @@
+mod app;
 mod github;
 mod installs;
 
@@ -8,7 +9,8 @@ use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 
-pub use github::GitHubReleases;
+pub use app::{newer_release, AppRelease, AppReleaseFeed};
+pub use github::{GitHubAppReleases, GitHubReleases};
 pub use installs::{Install, Installs, Version, PROGRAM};
 
 use crate::disk;

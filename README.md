@@ -8,7 +8,9 @@ Download the disk image, open it and drag **Sublate** to Applications. `ffmpeg` 
 
 Translation uses your own Anthropic API key: paste it in **Settings (⌘,)**, where it is kept in your Keychain. Fetching and downloading work without one.
 
-Sites change faster than the app ships, so `yt-dlp` is downloaded rather than bundled: **Settings → Download** fetches the latest official release, verifies its checksum, and installs it under `~/Library/Application Support/tech.radiw.sublate/`. After that the app looks for a newer release once a day, and **Settings → Check for Updates** does the same on demand.
+Sites change faster than the app ships, so `yt-dlp` is downloaded rather than bundled: **Settings → Download** fetches the latest official release, verifies its checksum, and installs it under `~/Library/Application Support/tech.radiw.sublate/`. After that the app looks for a newer release once a day, and **Settings → yt-dlp → Check for Updates** does the same on demand.
+
+The app itself is updated by hand. **Sublate → Check for Updates…** in the menu bar, or the same button under **Settings → Sublate**, asks GitHub for the latest release; when it is newer, **Download…** opens its page. Download the disk image and drag **Sublate** to Applications again, replacing the old copy. The API key, the downloaded `yt-dlp` and the caches stay.
 
 Moving the app to the Trash leaves that copy and the caches behind; **Settings → Clear Data** deletes them first. The API key has its own **Remove** button.
 
@@ -26,6 +28,12 @@ make release   # the same, notarized and stapled: the file to publish
 
 ```sh
 xcrun notarytool store-credentials sublate --apple-id <apple id> --team-id <team id>
+```
+
+A release is published on GitHub under the tag `v<version>`, where the version is `MARKETING_VERSION` in `app/project.yml`. The app's update check reads the latest release and rejects a tag of any other form:
+
+```sh
+gh release create v0.2.0 dist/Sublate-0.2.0.dmg
 ```
 
 `make project` alone produces `app/Sublate.xcodeproj` for working in Xcode; rerun `make core` after changing Rust code.
