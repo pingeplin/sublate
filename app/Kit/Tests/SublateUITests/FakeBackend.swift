@@ -103,6 +103,12 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     }
 }
 
+extension AppUpdate {
+    static let sample = AppUpdate(
+        version: "0.2.0", pageUrl: "https://github.com/pingeplin/sublate/releases/tag/v0.2.0"
+    )
+}
+
 extension VideoMetadata {
     static let english = SubtitleTrack(code: "en", name: "English", kind: .manual)
     static let koreanAuto = SubtitleTrack(code: "ko-orig", name: "Korean (Original)", kind: .auto)

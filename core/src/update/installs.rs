@@ -12,19 +12,16 @@ const STAGING_PREFIX: &str = ".staging-";
 /// A fresh install is slow to start once, while macOS scans its libraries.
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// A yt-dlp release tag such as `2026.08.19` or `2026.08.19.1`, ordered numerically.
+/// A release version such as `2026.08.19`, `2026.08.19.1` or `0.2.0`, ordered numerically.
 #[derive(Debug, Clone)]
 pub struct Version(String);
 
 impl Version {
-    /// Only digits and dots are accepted, so a tag is always safe to use as a directory name.
-    pub fn parse(text: &str) -> AppResult<Self> {
-        let tag = text.trim();
-        if tag.split('.').all(|part| part.parse::<u32>().is_ok()) {
-            Ok(Self(tag.to_string()))
-        } else {
-            Err(AppError::Update(format!("'{tag}' is not a yt-dlp version")))
-        }
+    /// Only digits and dots are accepted, so a version is always safe to use as a directory name.
+    pub fn parse(text: &str) -> Option<Self> {
+        let version = text.trim();
+        let numeric = version.split('.').all(|part| part.parse::<u32>().is_ok());
+        numeric.then(|| Self(version.to_string()))
     }
 
     fn parts(&self) -> Vec<u32> {
@@ -56,6 +53,11 @@ impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+/// The version in a yt-dlp release tag, or in what the program prints for `--version`.
+pub(super) fn ytdlp_version(text: &str) -> AppResult<Version> {
+    Version::parse(text).ok_or_else(|| AppError::Update(format!("'{}' is not a yt-dlp version", text.trim())))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,7 +93,7 @@ impl Installs {
         let entries = std::fs::read_dir(&self.root).ok()?;
         entries
             .flatten()
-            .filter_map(|entry| Version::parse(&entry.file_name().to_string_lossy()).ok())
+            .filter_map(|entry| Version::parse(&entry.file_name().to_string_lossy()))
             .filter_map(|version| self.find(&version))
             .max_by(|a, b| a.version.cmp(&b.version))
     }
@@ -174,7 +176,7 @@ async fn reported_version(program: &Path) -> AppResult<Version> {
         .map_err(|_| AppError::Update("the release did not start".into()))?
         .map_err(|e| AppError::Update(format!("the release cannot run: {e}")))?;
     if output.status.success() {
-        Version::parse(&String::from_utf8_lossy(&output.stdout))
+        ytdlp_version(&String::from_utf8_lossy(&output.stdout))
     } else {
         Err(AppError::Update(format!(
             "the release failed to start: {}",
@@ -239,7 +241,7 @@ mod tests {
     #[test]
     fn tags_that_could_escape_the_directory_are_rejected() {
         for tag in ["", "../2026", "2026.08.19/..", "v2026.08.19", "2026..19", "nightly"] {
-            assert!(Version::parse(tag).is_err(), "{tag}");
+            assert!(Version::parse(tag).is_none(), "{tag}");
         }
     }
 

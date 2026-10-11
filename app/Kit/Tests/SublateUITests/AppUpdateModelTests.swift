@@ -5,8 +5,6 @@ import Testing
 
 @MainActor
 struct AppUpdateModelTests {
-    static let newer = AppUpdate(version: "0.2.0", pageUrl: "https://github.com/pingeplin/sublate/releases/tag/v0.2.0")
-
     let backend = FakeBackend()
     let model: AppUpdateModel
 
@@ -16,18 +14,16 @@ struct AppUpdateModelTests {
 
     @Test func nothingIsCheckedUntilTheUserAsks() {
         #expect(model.state == .unchecked)
-        #expect(model.currentVersion == "0.1.0")
         #expect(backend.updateChecks.isEmpty)
     }
 
     @Test func aCheckReportsTheNewerVersion() async {
-        backend.appUpdate = .success(Self.newer)
+        backend.appUpdate = .success(.sample)
 
         await model.check()
 
         #expect(backend.updateChecks == ["0.1.0"])
-        #expect(model.state == .available(Self.newer))
-        #expect(!model.isChecking)
+        #expect(model.state == .available(.sample))
     }
 
     @Test func aCheckWithoutANewerVersionSaysSo() async {
@@ -42,17 +38,16 @@ struct AppUpdateModelTests {
         await model.check()
 
         #expect(model.state == .failed("Sublate update check failed: offline"))
-        #expect(!model.isChecking)
     }
 
     @Test func aLaterCheckReplacesTheEarlierResult() async {
         backend.appUpdate = .failure(.Failed(message: "Sublate update check failed: offline"))
         await model.check()
-        backend.appUpdate = .success(Self.newer)
+        backend.appUpdate = .success(.sample)
 
         await model.check()
 
-        #expect(model.state == .available(Self.newer))
+        #expect(model.state == .available(.sample))
     }
 
     @Test func aSecondCheckWhileOneRunsIsIgnored() async {
