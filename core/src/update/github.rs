@@ -6,7 +6,7 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
-use super::app::parse_version;
+use super::installs::ytdlp_version;
 use super::{AppRelease, AppReleaseFeed, Release, ReleaseFeed, Version};
 use crate::error::{AppError, AppResult};
 
@@ -25,11 +25,11 @@ const APP_RELEASE_PAGE: &str = "https://github.com/pingeplin/sublate/releases/ta
 const APP_TAG_PREFIX: char = 'v';
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 
-fn client() -> reqwest::Result<reqwest::Client> {
+fn client(timeout: Duration) -> reqwest::Result<reqwest::Client> {
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(DOWNLOAD_TIMEOUT)
+        .timeout(timeout)
         .build()
 }
 
@@ -41,7 +41,7 @@ pub struct GitHubReleases {
 impl GitHubReleases {
     pub fn new() -> AppResult<Self> {
         Ok(Self {
-            http: client().map_err(failure)?,
+            http: client(DOWNLOAD_TIMEOUT).map_err(failure)?,
         })
     }
 
@@ -83,7 +83,7 @@ struct AssetDto {
 
 fn parse_release(json: &str) -> AppResult<Release> {
     let release: ReleaseDto = serde_json::from_str(json)?;
-    let version = Version::parse(&release.tag_name)?;
+    let version = ytdlp_version(&release.tag_name)?;
     let asset = release
         .assets
         .into_iter()
@@ -113,7 +113,7 @@ pub struct GitHubAppReleases {
 impl GitHubAppReleases {
     pub fn new() -> AppResult<Self> {
         Ok(Self {
-            http: client().map_err(check_failure)?,
+            http: client(CHECK_TIMEOUT).map_err(check_failure)?,
         })
     }
 }
@@ -121,8 +121,7 @@ impl GitHubAppReleases {
 #[async_trait]
 impl AppReleaseFeed for GitHubAppReleases {
     async fn latest(&self) -> AppResult<AppRelease> {
-        let request = self.http.get(APP_LATEST_URL).timeout(CHECK_TIMEOUT);
-        let response = request.send().await.map_err(check_failure)?;
+        let response = self.http.get(APP_LATEST_URL).send().await.map_err(check_failure)?;
         // GitHub answers the same for a repository without releases and for one it cannot show.
         if response.status() == StatusCode::NOT_FOUND {
             return Err(AppError::AppUpdate("no published release was found".into()));
@@ -142,7 +141,7 @@ fn parse_app_release(json: &str) -> AppResult<AppRelease> {
     let AppReleaseDto { tag_name } = serde_json::from_str(json)?;
     let version = tag_name
         .strip_prefix(APP_TAG_PREFIX)
-        .and_then(|version| parse_version(version).ok())
+        .and_then(Version::parse)
         .ok_or_else(|| AppError::AppUpdate(format!("release '{tag_name}' is not tagged v<version>")))?;
     Ok(AppRelease {
         page: format!("{APP_RELEASE_PAGE}{APP_TAG_PREFIX}{version}"),

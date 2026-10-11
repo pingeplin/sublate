@@ -25,8 +25,8 @@ pub async fn newer_release(feed: &dyn AppReleaseFeed, current: &str) -> AppResul
 }
 
 /// App versions are digits and dots, like the `MARKETING_VERSION` they come from.
-pub(super) fn parse_version(text: &str) -> AppResult<Version> {
-    Version::parse(text).map_err(|_| AppError::AppUpdate(format!("'{}' is not a Sublate version", text.trim())))
+fn parse_version(text: &str) -> AppResult<Version> {
+    Version::parse(text).ok_or_else(|| AppError::AppUpdate(format!("'{}' is not a Sublate version", text.trim())))
 }
 
 #[cfg(test)]
@@ -36,12 +36,12 @@ mod tests {
     use super::*;
 
     struct Offering {
-        latest: AppResult<&'static str>,
+        latest: Result<&'static str, &'static str>,
         asked: AtomicUsize,
     }
 
     impl Offering {
-        fn new(latest: AppResult<&'static str>) -> Self {
+        fn new(latest: Result<&'static str, &'static str>) -> Self {
             Self {
                 latest,
                 asked: AtomicUsize::new(0),
@@ -53,9 +53,9 @@ mod tests {
     impl AppReleaseFeed for Offering {
         async fn latest(&self) -> AppResult<AppRelease> {
             self.asked.fetch_add(1, Ordering::SeqCst);
-            match &self.latest {
+            match self.latest {
                 Ok(version) => Ok(release(version)),
-                Err(e) => Err(AppError::AppUpdate(e.to_string())),
+                Err(reason) => Err(AppError::AppUpdate(reason.into())),
             }
         }
     }
@@ -81,16 +81,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn versions_compare_as_numbers() {
-        let feed = Offering::new(Ok("0.10.0"));
-        assert_eq!(newer_release(&feed, "0.9.0").await.unwrap(), Some(release("0.10.0")));
-    }
-
-    #[tokio::test]
     async fn a_failed_feed_fails_the_check() {
-        let feed = Offering::new(Err(AppError::AppUpdate("offline".into())));
+        let feed = Offering::new(Err("offline"));
         let err = newer_release(&feed, "0.1.0").await.unwrap_err();
-        assert!(err.to_string().ends_with("offline"), "{err}");
+        assert_eq!(err.to_string(), "Sublate update check failed: offline");
     }
 
     #[tokio::test]

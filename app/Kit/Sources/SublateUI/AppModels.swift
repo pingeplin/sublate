@@ -23,9 +23,10 @@ public struct AppModels {
 }
 
 extension Bundle {
-    /// The version the user knows the app by; code that runs outside an app bundle has none.
+    /// The version the user knows the app by. Code that runs outside an app bundle has none,
+    /// and the backend rejects the stand-in rather than taking it for an old version.
     var marketingVersion: String {
-        infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
 }
 

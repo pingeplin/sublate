@@ -41,17 +41,15 @@ struct PresentationTests {
     }
 
     @Test func anAppUpdateCheckDescribesWhatItFound() {
-        let update = AppUpdate(version: "0.2.0", pageUrl: "https://github.com/pingeplin/sublate/releases/tag/v0.2.0")
         #expect(AppUpdateState.unchecked.status == .idle)
         #expect(AppUpdateState.checking.status == .idle)
         #expect(AppUpdateState.upToDate.status == .info("Sublate is up to date."))
-        #expect(AppUpdateState.available(update).status == .info("Version 0.2.0 is available."))
+        #expect(AppUpdateState.available(.sample).status == .info("Version 0.2.0 is available."))
         #expect(AppUpdateState.failed("offline").status == .failure("offline"))
     }
 
     @Test func onlyANewerVersionOffersADownloadPage() {
-        let update = AppUpdate(version: "0.2.0", pageUrl: "https://github.com/pingeplin/sublate/releases/tag/v0.2.0")
-        #expect(AppUpdateState.available(update).downloadPage == URL(string: update.pageUrl))
+        #expect(AppUpdateState.available(.sample).downloadPage == URL(string: AppUpdate.sample.pageUrl))
         #expect(AppUpdateState.upToDate.downloadPage == nil)
         #expect(AppUpdateState.failed("offline").downloadPage == nil)
     }
