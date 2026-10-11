@@ -17,10 +17,6 @@ struct DefaultsAntProfileStore: AntProfileStore {
     }
 
     func save(_ name: String?) {
-        if let name {
-            defaults.set(name, forKey: Self.key)
-        } else {
-            defaults.removeObject(forKey: Self.key)
-        }
+        defaults.set(name, forKey: Self.key)
     }
 }
