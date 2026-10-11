@@ -56,10 +56,8 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
         MainActor.assumeIsolated { antProfile = name }
     }
 
-    /// Like the real backend, a chosen profile matters only when the shell offers `ant`.
     func credentialSource() async -> String? {
         if apiKey != nil { return "your saved API key" }
-        guard let shellCredential else { return nil }
         return antProfile.map { "ant profile '\($0)'" } ?? shellCredential
     }
 

@@ -8,7 +8,6 @@ use crate::error::{AppError, AppResult};
 use crate::process_env::ProcessEnv;
 
 const ANT: &str = "ant";
-const PROFILE_VAR: &str = "ANTHROPIC_PROFILE";
 const SAVED_KEY_SOURCE: &str = "your saved API key";
 const OAUTH_BETA: &str = "oauth-2025-04-20";
 const TOKEN_TTL: Duration = Duration::from_secs(60);
@@ -38,7 +37,7 @@ pub trait CredentialProvider: Send + Sync {
     async fn credential(&self) -> AppResult<Credential>;
 }
 
-/// A provider with one fixed origin the UI can name.
+/// A provider whose origin the UI can name.
 pub trait CredentialSource: CredentialProvider {
     fn describe(&self) -> String;
 }
@@ -58,23 +57,19 @@ impl CredentialSource for StaticApiKey {
     }
 }
 
-/// The `ant` profile the user chose in the app. Whoever saves it and the provider that reads it
-/// share one, so a change reaches a provider that is already in use.
+/// What the user saved in the app, a key or the name of a profile. Blank text counts as nothing.
 #[derive(Default)]
-pub struct ProfileChoice(RwLock<Option<String>>);
+pub struct SavedSetting(RwLock<Option<String>>);
 
-impl ProfileChoice {
-    fn set(&self, name: Option<String>) {
-        *self.0.write().expect("profile lock") = non_blank(name);
+impl SavedSetting {
+    fn set(&self, text: Option<String>) {
+        let text = text.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+        *self.0.write().expect("saved setting lock") = text;
     }
 
     fn get(&self) -> Option<String> {
-        self.0.read().expect("profile lock").clone()
+        self.0.read().expect("saved setting lock").clone()
     }
-}
-
-fn non_blank(text: Option<String>) -> Option<String> {
-    text.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
 }
 
 struct Minted {
@@ -84,14 +79,16 @@ struct Minted {
 }
 
 /// Short-lived OAuth token minted by `ant auth print-credentials`, which refreshes as needed.
+/// The profile chosen in the app is shared with whoever saves it, so a change reaches a
+/// provider that is already in use.
 pub struct AntProfile {
     env: ProcessEnv,
-    chosen: Arc<ProfileChoice>,
+    chosen: Arc<SavedSetting>,
     cached: Mutex<Option<Minted>>,
 }
 
 impl AntProfile {
-    pub fn new(env: ProcessEnv, chosen: Arc<ProfileChoice>) -> Self {
+    pub fn new(env: ProcessEnv, chosen: Arc<SavedSetting>) -> Self {
         Self {
             env,
             chosen,
@@ -102,7 +99,7 @@ impl AntProfile {
     /// The profile chosen in the app, else the one the shell names. With neither, `ant` is
     /// left to use its own active profile.
     fn profile(&self) -> Option<String> {
-        self.chosen.get().or_else(|| self.env.var(PROFILE_VAR).map(str::to_string))
+        self.chosen.get().or_else(|| self.env.var("ANTHROPIC_PROFILE").map(str::to_string))
     }
 
     async fn mint(&self, profile: Option<&str>) -> AppResult<String> {
@@ -146,8 +143,8 @@ fn login_command(profile: Option<&str>) -> String {
 #[async_trait]
 impl CredentialProvider for AntProfile {
     async fn credential(&self) -> AppResult<Credential> {
-        let profile = self.profile();
         let mut cached = self.cached.lock().await;
+        let profile = self.profile();
         if let Some(minted) = cached.as_ref() {
             if minted.profile == profile && minted.at.elapsed() < TOKEN_TTL {
                 return Ok(Credential::OAuth(minted.token.clone()));
@@ -170,7 +167,7 @@ impl CredentialSource for AntProfile {
 }
 
 /// What the user's shell offers: an exported key, else an `ant` profile when `ant` is installed.
-pub fn resolve_provider(env: &ProcessEnv, chosen: Arc<ProfileChoice>) -> Option<Box<dyn CredentialSource>> {
+pub fn resolve_provider(env: &ProcessEnv, chosen: Arc<SavedSetting>) -> Option<Box<dyn CredentialSource>> {
     if let Some(key) = env.var("ANTHROPIC_API_KEY") {
         return Some(Box::new(StaticApiKey(key.to_string())));
     }
@@ -181,8 +178,8 @@ pub fn resolve_provider(env: &ProcessEnv, chosen: Arc<ProfileChoice>) -> Option<
 /// The key saved in the app wins; the shell is only consulted, once, when there is none.
 #[derive(Default)]
 pub struct CredentialChain {
-    saved_key: RwLock<Option<String>>,
-    ant_profile: Arc<ProfileChoice>,
+    saved_key: SavedSetting,
+    ant_profile: Arc<SavedSetting>,
     shell: OnceCell<Option<Box<dyn CredentialSource>>>,
 }
 
@@ -196,7 +193,7 @@ impl CredentialChain {
     }
 
     pub fn save_key(&self, key: Option<String>) {
-        *self.saved_key.write().expect("saved key lock") = non_blank(key);
+        self.saved_key.set(key);
     }
 
     /// The `ant` profile to use when the shell offers `ant`; `None` leaves the choice to the
@@ -207,14 +204,10 @@ impl CredentialChain {
 
     /// Names where the credential comes from, or `None` when the user has yet to provide one.
     pub async fn source(&self) -> Option<String> {
-        if self.saved_key().is_some() {
+        if self.saved_key.get().is_some() {
             return Some(SAVED_KEY_SOURCE.into());
         }
         self.shell().await.map(CredentialSource::describe)
-    }
-
-    fn saved_key(&self) -> Option<String> {
-        self.saved_key.read().expect("saved key lock").clone()
     }
 
     async fn shell(&self) -> Option<&dyn CredentialSource> {
@@ -226,7 +219,7 @@ impl CredentialChain {
 #[async_trait]
 impl CredentialProvider for CredentialChain {
     async fn credential(&self) -> AppResult<Credential> {
-        if let Some(key) = self.saved_key() {
+        if let Some(key) = self.saved_key.get() {
             return Ok(Credential::ApiKey(key));
         }
         match self.shell().await {
@@ -274,8 +267,13 @@ mod tests {
         log.lines().count()
     }
 
-    fn chosen(name: Option<&str>) -> Arc<ProfileChoice> {
-        let choice = Arc::new(ProfileChoice::default());
+    /// The shell of a user who has `ant`. An empty `profile` stands for no `ANTHROPIC_PROFILE`.
+    fn shell_with(bin: &tempfile::TempDir, profile: &str) -> ProcessEnv {
+        ProcessEnv::from_vars([("ANTHROPIC_PROFILE", profile), ("PATH", bin.path().to_str().unwrap())])
+    }
+
+    fn chosen(name: Option<&str>) -> Arc<SavedSetting> {
+        let choice = Arc::new(SavedSetting::default());
         choice.set(name.map(String::from));
         choice
     }
@@ -309,8 +307,7 @@ mod tests {
     #[tokio::test]
     async fn the_profile_chosen_in_the_app_wins_over_the_one_the_shell_names() {
         let bin = path_with_ant();
-        let env = ProcessEnv::from_vars([("ANTHROPIC_PROFILE", "shell"), ("PATH", bin.path().to_str().unwrap())]);
-        let ant = AntProfile::new(env, chosen(Some("mine")));
+        let ant = AntProfile::new(shell_with(&bin, "shell"), chosen(Some("mine")));
 
         assert_eq!(ant.describe(), "ant profile 'mine'");
         assert!(ant.credential().await.unwrap() == token("--profile mine auth print-credentials --access-token"));
@@ -319,8 +316,7 @@ mod tests {
     #[tokio::test]
     async fn without_a_chosen_profile_the_one_the_shell_names_is_used() {
         let bin = path_with_ant();
-        let env = ProcessEnv::from_vars([("ANTHROPIC_PROFILE", "shell"), ("PATH", bin.path().to_str().unwrap())]);
-        let ant = AntProfile::new(env, chosen(None));
+        let ant = AntProfile::new(shell_with(&bin, "shell"), chosen(None));
 
         assert_eq!(ant.describe(), "ant profile 'shell'");
         assert!(ant.credential().await.unwrap() == token("--profile shell auth print-credentials --access-token"));
@@ -329,7 +325,7 @@ mod tests {
     #[tokio::test]
     async fn without_any_profile_ant_is_left_to_use_its_active_one() {
         let bin = path_with_ant();
-        let ant = AntProfile::new(ProcessEnv::from_vars([("PATH", bin.path().to_str().unwrap())]), chosen(None));
+        let ant = AntProfile::new(shell_with(&bin, ""), chosen(None));
 
         assert_eq!(ant.describe(), "the active ant profile");
         assert!(ant.credential().await.unwrap() == token("auth print-credentials --access-token"));
@@ -339,8 +335,7 @@ mod tests {
     async fn a_token_is_reused_until_the_profile_changes() {
         let bin = path_with_ant();
         let choice = chosen(Some("first"));
-        let env = ProcessEnv::from_vars([("PATH", bin.path().to_str().unwrap())]);
-        let ant = AntProfile::new(env, Arc::clone(&choice));
+        let ant = AntProfile::new(shell_with(&bin, ""), Arc::clone(&choice));
 
         ant.credential().await.unwrap();
         ant.credential().await.unwrap();
@@ -355,7 +350,7 @@ mod tests {
     #[tokio::test]
     async fn a_profile_without_a_token_names_the_login_command() {
         let bin = path_with_scripted_ant("echo 'not logged in' >&2; exit 1");
-        let env = ProcessEnv::from_vars([("PATH", bin.path().to_str().unwrap())]);
+        let env = shell_with(&bin, "");
 
         let named = AntProfile::new(env.clone(), chosen(Some("mine"))).credential().await.err().unwrap();
         let active = AntProfile::new(env, chosen(None)).credential().await.err().unwrap();
@@ -373,9 +368,8 @@ mod tests {
     #[tokio::test]
     async fn a_profile_saved_after_the_shell_was_read_is_used_at_once() {
         let bin = path_with_ant();
-        let env = ProcessEnv::from_vars([("PATH", bin.path().to_str().unwrap())]);
         let chain = CredentialChain::default();
-        let _ = chain.shell.set(resolve_provider(&env, Arc::clone(&chain.ant_profile)));
+        let _ = chain.shell.set(resolve_provider(&shell_with(&bin, ""), Arc::clone(&chain.ant_profile)));
         assert_eq!(chain.source().await.as_deref(), Some("the active ant profile"));
 
         chain.save_profile(Some("  mine\n".into()));
