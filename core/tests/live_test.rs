@@ -11,7 +11,7 @@ use sublate_core::file_name::OutputLocation;
 use sublate_core::languages::find_target;
 use sublate_core::metadata::TrackKind;
 use sublate_core::subtitle::parse_srt;
-use sublate_core::subtitle_job::translate_subtitle_file;
+use sublate_core::subtitle_job::{translate_subtitle_file, SubtitleSource};
 use sublate_core::translate::claude::ClaudeTranslator;
 use sublate_core::toolchain::Toolchain;
 use sublate_core::translate::{BatchRequest, Translator};

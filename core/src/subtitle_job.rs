@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use async_trait::async_trait;
+
 use crate::error::AppResult;
 use crate::file_name::OutputLocation;
 use crate::languages::Language;
@@ -7,7 +9,18 @@ use crate::metadata::{SubtitleTrack, TrackKind};
 use crate::punctuation::normalize;
 use crate::subtitle::{absorb_empty_cues, collapse_rolling, parse_srt, to_srt, Cue};
 use crate::translate::{translate_cues, TranslationPlan, Translator};
-use crate::ytdlp::YtDlp;
+
+/// Where a video's subtitle tracks come from.
+#[async_trait]
+pub trait SubtitleSource: Send + Sync {
+    /// Writes the track at `out.subtitle(&track.code)` and returns that path.
+    async fn download_subtitle(
+        &self,
+        url: &str,
+        out: &OutputLocation,
+        track: &SubtitleTrack,
+    ) -> AppResult<PathBuf>;
+}
 
 #[derive(Debug)]
 pub struct SubtitleOutput {
@@ -18,7 +31,7 @@ pub struct SubtitleOutput {
 
 /// Downloads a subtitle track and writes its translation next to it.
 pub async fn download_and_translate(
-    ytdlp: &YtDlp,
+    source: &dyn SubtitleSource,
     translator: &dyn Translator,
     url: &str,
     out: &OutputLocation,
@@ -26,7 +39,7 @@ pub async fn download_and_translate(
     target: Language,
     on_progress: impl Fn(usize, usize) + Sync,
 ) -> AppResult<SubtitleOutput> {
-    let source_path = ytdlp.download_subtitle(url, out, track).await?;
+    let source_path = source.download_subtitle(url, out, track).await?;
     let translated_path = out.translation(&track.code, target.code);
     let cue_count =
         translate_subtitle_file(translator, &source_path, track, target, &translated_path, on_progress)

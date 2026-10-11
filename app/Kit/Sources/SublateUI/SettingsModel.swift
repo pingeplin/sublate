@@ -31,10 +31,10 @@ public final class SettingsModel {
     private(set) var isUpdating = false
     private(set) var status = Status.idle
 
-    private let backend: any BackendProtocol
+    private let backend: any SettingsBackend
     private let keyStore: any APIKeyStore
 
-    init(backend: any BackendProtocol, keyStore: any APIKeyStore) {
+    init(backend: any SettingsBackend, keyStore: any APIKeyStore) {
         self.backend = backend
         self.keyStore = keyStore
     }
