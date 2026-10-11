@@ -7,7 +7,7 @@ use crate::languages::{Language, TARGET_LANGUAGES};
 use crate::metadata::{SubtitleTrack, VideoMetadata};
 use crate::services::{AppState, Locations};
 use crate::subtitle_job::SubtitleOutput;
-use crate::update::Version;
+use crate::update::{AppRelease, Version};
 
 /// Flattened to its message, so the UI handles one case whatever the cause.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -83,6 +83,22 @@ impl From<SubtitleOutput> for SubtitleFiles {
     }
 }
 
+/// A newer Sublate and the page it is downloaded from.
+#[derive(Debug, PartialEq, Eq, uniffi::Record)]
+pub struct AppUpdate {
+    pub version: String,
+    pub page_url: String,
+}
+
+impl From<AppRelease> for AppUpdate {
+    fn from(release: AppRelease) -> Self {
+        Self {
+            version: release.version.to_string(),
+            page_url: release.page,
+        }
+    }
+}
+
 /// Called from the runtime thread, never the UI thread.
 #[uniffi::export(foreign)]
 pub trait VideoProgressListener: Send + Sync {
@@ -133,6 +149,13 @@ impl Backend {
     /// at most once a day.
     pub async fn update_ytdlp(&self, force: bool) -> BackendResult<Option<String>> {
         Ok(version_text(self.state.update_ytdlp(force).await?))
+    }
+
+    /// The Sublate release to move to, or `None` when `current_version`, the version that is
+    /// running, is the latest. Nothing is downloaded.
+    pub async fn check_app_update(&self, current_version: String) -> BackendResult<Option<AppUpdate>> {
+        let release = self.state.check_app_update(&current_version).await?;
+        Ok(release.map(AppUpdate::from))
     }
 
     /// Deletes the downloaded yt-dlp and the caches; yt-dlp has to be downloaded again.
@@ -293,6 +316,27 @@ mod tests {
         let backend = backend();
         backend.set_api_key(Some("sk-ant-test".into()));
         assert_eq!(backend.credential_source().await.as_deref(), Some("your saved API key"));
+    }
+
+    #[tokio::test]
+    async fn an_update_check_works_on_a_broken_installation_and_rejects_a_bad_version() {
+        let err = backend().check_app_update("dev".into()).await.unwrap_err();
+        assert_eq!(err.to_string(), "Sublate update check failed: 'dev' is not a Sublate version");
+    }
+
+    #[test]
+    fn an_app_update_carries_its_version_and_page_as_strings() {
+        let update = AppUpdate::from(AppRelease {
+            version: Version::parse("0.2.0").unwrap(),
+            page: "https://example.com/v0.2.0".into(),
+        });
+        assert_eq!(
+            update,
+            AppUpdate {
+                version: "0.2.0".into(),
+                page_url: "https://example.com/v0.2.0".into(),
+            }
+        );
     }
 
     #[test]

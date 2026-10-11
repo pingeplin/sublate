@@ -43,6 +43,24 @@ extension YtdlpState {
     }
 }
 
+extension AppUpdateState {
+    /// What the last check found.
+    var status: Status {
+        switch self {
+        case .unchecked, .checking: .idle
+        case .upToDate: .info("Sublate is up to date.")
+        case .available(let update): .info("Version \(update.version) is available.")
+        case .failed(let message): .failure(message)
+        }
+    }
+
+    /// Where the newer version is downloaded from.
+    var downloadPage: URL? {
+        guard case .available(let update) = self else { return nil }
+        return URL(string: update.pageUrl)
+    }
+}
+
 extension VideoMetadata {
     var reference: VideoRef {
         VideoRef(url: url, id: id, title: title)

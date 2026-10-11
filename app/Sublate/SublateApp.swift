@@ -11,9 +11,12 @@ struct SublateApp: App {
                 .frame(minWidth: 520, minHeight: 360)
         }
         .defaultSize(width: 640, height: 720)
+        .commands {
+            UpdateCommands(model: models.updates)
+        }
 
         Settings {
-            SettingsView(model: models.settings)
+            SettingsView(model: models.settings, updates: models.updates)
         }
     }
 }

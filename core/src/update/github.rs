@@ -2,13 +2,15 @@ use std::path::Path;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use reqwest::StatusCode;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
-use super::{Release, ReleaseFeed, Version};
+use super::app::parse_version;
+use super::{AppRelease, AppReleaseFeed, Release, ReleaseFeed, Version};
 use crate::error::{AppError, AppResult};
 
-const LATEST_URL: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
+const YTDLP_LATEST_URL: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
 /// The onedir build: it starts in a fraction of a second, where the single-file one unpacks
 /// itself on every launch.
 const ASSET: &str = "yt-dlp_macos.zip";
@@ -17,6 +19,20 @@ const USER_AGENT: &str = concat!("sublate/", env!("CARGO_PKG_VERSION"));
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
+const APP_LATEST_URL: &str = "https://api.github.com/repos/pingeplin/sublate/releases/latest";
+const APP_RELEASE_PAGE: &str = "https://github.com/pingeplin/sublate/releases/tag/";
+/// Sublate's releases are tagged `v<version>`, such as `v0.2.0`.
+const APP_TAG_PREFIX: char = 'v';
+const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn client() -> reqwest::Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(DOWNLOAD_TIMEOUT)
+        .build()
+}
+
 /// yt-dlp's official GitHub releases.
 pub struct GitHubReleases {
     http: reqwest::Client,
@@ -24,13 +40,9 @@ pub struct GitHubReleases {
 
 impl GitHubReleases {
     pub fn new() -> AppResult<Self> {
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(DOWNLOAD_TIMEOUT)
-            .build()
-            .map_err(failure)?;
-        Ok(Self { http })
+        Ok(Self {
+            http: client().map_err(failure)?,
+        })
     }
 
     async fn get(&self, url: &str) -> AppResult<reqwest::Response> {
@@ -42,7 +54,7 @@ impl GitHubReleases {
 #[async_trait]
 impl ReleaseFeed for GitHubReleases {
     async fn latest(&self) -> AppResult<Release> {
-        parse_release(&self.get(LATEST_URL).await?.text().await.map_err(failure)?)
+        parse_release(&self.get(YTDLP_LATEST_URL).await?.text().await.map_err(failure)?)
     }
 
     async fn download(&self, release: &Release, dest: &Path) -> AppResult<()> {
@@ -93,6 +105,55 @@ fn failure(error: reqwest::Error) -> AppError {
     AppError::Update(error.to_string())
 }
 
+/// Sublate's own releases on GitHub. Drafts and prereleases are never the latest one.
+pub struct GitHubAppReleases {
+    http: reqwest::Client,
+}
+
+impl GitHubAppReleases {
+    pub fn new() -> AppResult<Self> {
+        Ok(Self {
+            http: client().map_err(check_failure)?,
+        })
+    }
+}
+
+#[async_trait]
+impl AppReleaseFeed for GitHubAppReleases {
+    async fn latest(&self) -> AppResult<AppRelease> {
+        let request = self.http.get(APP_LATEST_URL).timeout(CHECK_TIMEOUT);
+        let response = request.send().await.map_err(check_failure)?;
+        // GitHub answers the same for a repository without releases and for one it cannot show.
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(AppError::AppUpdate("no published release was found".into()));
+        }
+        let response = response.error_for_status().map_err(check_failure)?;
+        parse_app_release(&response.text().await.map_err(check_failure)?)
+    }
+}
+
+#[derive(Deserialize)]
+struct AppReleaseDto {
+    tag_name: String,
+}
+
+/// The page is derived from the checked version, so nothing the feed says is opened as it is.
+fn parse_app_release(json: &str) -> AppResult<AppRelease> {
+    let AppReleaseDto { tag_name } = serde_json::from_str(json)?;
+    let version = tag_name
+        .strip_prefix(APP_TAG_PREFIX)
+        .and_then(|version| parse_version(version).ok())
+        .ok_or_else(|| AppError::AppUpdate(format!("release '{tag_name}' is not tagged v<version>")))?;
+    Ok(AppRelease {
+        page: format!("{APP_RELEASE_PAGE}{APP_TAG_PREFIX}{version}"),
+        version,
+    })
+}
+
+fn check_failure(error: reqwest::Error) -> AppError {
+    AppError::AppUpdate(error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,5 +197,31 @@ mod tests {
     fn a_tag_that_is_not_a_version_is_rejected() {
         let json = r#"{"tag_name": "../evil", "assets": []}"#;
         assert!(matches!(parse_release(json), Err(AppError::Update(_))));
+    }
+
+    fn app_release_json(tag: &str) -> String {
+        format!(r#"{{"tag_name": "{tag}", "html_url": "https://example.com/elsewhere", "assets": []}}"#)
+    }
+
+    #[test]
+    fn an_app_release_is_read_from_its_tag_and_links_to_its_own_page() {
+        assert_eq!(
+            parse_app_release(&app_release_json("v0.2.0")).unwrap(),
+            AppRelease {
+                version: Version::parse("0.2.0").unwrap(),
+                page: "https://github.com/pingeplin/sublate/releases/tag/v0.2.0".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn an_app_tag_outside_the_convention_is_rejected() {
+        for tag in ["0.2.0", "v", "vnext", "V0.2.0", "v0.2.0-beta", "v../evil", "nightly"] {
+            let err = parse_app_release(&app_release_json(tag)).unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                format!("Sublate update check failed: release '{tag}' is not tagged v<version>")
+            );
+        }
     }
 }

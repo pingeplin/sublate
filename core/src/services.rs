@@ -12,7 +12,7 @@ use crate::subtitle_job::{download_and_translate, SubtitleOutput};
 use crate::toolchain::Toolchain;
 use crate::translate::claude::ClaudeTranslator;
 use crate::translate::Translator;
-use crate::update::{GitHubReleases, Installs, Updater, Version};
+use crate::update::{newer_release, AppRelease, GitHubAppReleases, GitHubReleases, Installs, Updater, Version};
 use crate::ytdlp::YtDlp;
 
 const INSTALLS_DIR: &str = "yt-dlp";
@@ -87,6 +87,12 @@ impl AppState {
             services.ytdlp.switch_to(install);
         }
         Ok(services.ytdlp.version())
+    }
+
+    /// The Sublate release to move to, or `None` when `current`, the version that is running,
+    /// is the latest. It needs none of the services, so a broken installation can still ask.
+    pub async fn check_app_update(&self, current: &str) -> AppResult<Option<AppRelease>> {
+        newer_release(&GitHubAppReleases::new()?, current).await
     }
 
     /// Deletes what the app wrote under the user's Library, the downloaded yt-dlp and the

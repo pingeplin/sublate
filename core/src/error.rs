@@ -26,6 +26,8 @@ pub enum AppError {
     Toolchain(String),
     #[error("yt-dlp update failed: {0}")]
     Update(String),
+    #[error("Sublate update check failed: {0}")]
+    AppUpdate(String),
 }
 
 impl AppError {
