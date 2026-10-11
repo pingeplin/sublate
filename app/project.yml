@@ -40,3 +40,7 @@ targets:
         # Notarization needs a secure timestamp and rejects the debugging entitlement.
         OTHER_CODE_SIGN_FLAGS: --timestamp
         CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+      configs:
+        Release:
+          # Strips the symbols, which name the build folder; a plain build leaves them in.
+          DEPLOYMENT_POSTPROCESSING: YES

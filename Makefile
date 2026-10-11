@@ -35,8 +35,11 @@ tools: $(TOOLS_READY)
 $(TOOLS_READY): vendor/fetch.sh vendor/tools.lock vendor/deno.entitlements $(wildcard vendor/licenses/*)
 	SIGN_IDENTITY="$(SIGN_IDENTITY)" vendor/fetch.sh
 
+# Panic messages name the source file of each dependency, which sits in the home directory.
+# The remap keeps that directory, and so the account name, out of the app that ships.
 $(XCFRAMEWORK): $(RUST_SOURCES)
-	cargo build --manifest-path core/Cargo.toml --release --lib
+	RUSTFLAGS="--remap-path-prefix=$(HOME)=~" \
+		cargo build --manifest-path core/Cargo.toml --release --lib
 	rm -rf $(HEADERS) $(XCFRAMEWORK)
 	$(BINDGEN) ../$(STATIC_LIB) ../$(BINDINGS) --swift-sources
 	$(BINDGEN) ../$(STATIC_LIB) ../$(HEADERS) --headers --modulemap \
@@ -51,6 +54,7 @@ build: project
 		-configuration Release -derivedDataPath $(DERIVED) \
 		CODE_SIGN_IDENTITY="$(SIGN_IDENTITY)" build
 	codesign --verify --deep --strict "$(APP)"
+	! grep -rqF "$(HOME)" "$(APP)"
 
 # A signed disk image for trying the installer locally; Gatekeeper rejects it elsewhere.
 dmg: build
