@@ -17,7 +17,11 @@ public struct AppModels {
                 path: ContentModel.outputFolder, directoryHint: .isDirectory
             )
         )
-        settings = SettingsModel(backend: backend, keyStore: KeychainAPIKeyStore(service: identifier))
+        settings = SettingsModel(
+            backend: backend,
+            keyStore: KeychainAPIKeyStore(service: identifier),
+            profileStore: DefaultsAntProfileStore(defaults: .standard)
+        )
         updates = AppUpdateModel(backend: backend, currentVersion: bundle.marketingVersion)
     }
 }

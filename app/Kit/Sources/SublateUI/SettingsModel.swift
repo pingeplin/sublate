@@ -24,26 +24,35 @@ enum YtdlpState: Equatable {
 @Observable
 public final class SettingsModel {
     var apiKeyDraft = ""
+    var antProfileDraft = ""
 
     private(set) var credential = CredentialState.checking
     private(set) var hasSavedKey = false
+    private(set) var antProfile: String?
     private(set) var ytdlp = YtdlpState.checking
     private(set) var isUpdating = false
     private(set) var status = Status.idle
 
     private let backend: any SettingsBackend
     private let keyStore: any APIKeyStore
+    private let profileStore: any AntProfileStore
 
-    init(backend: any SettingsBackend, keyStore: any APIKeyStore) {
+    init(backend: any SettingsBackend, keyStore: any APIKeyStore, profileStore: any AntProfileStore) {
         self.backend = backend
         self.keyStore = keyStore
+        self.profileStore = profileStore
     }
 
     var canSaveKey: Bool {
         !apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var canSaveAntProfile: Bool {
+        draftedAntProfile != antProfile
+    }
+
     func start() async {
+        use(antProfile: profileStore.load())
         do {
             try await use(savedKey: keyStore.load())
         } catch {
@@ -67,6 +76,14 @@ public final class SettingsModel {
             try keyStore.remove()
             await use(savedKey: nil)
         }
+    }
+
+    /// An empty name leaves the choice to the shell, and then to `ant`.
+    func saveAntProfile() async {
+        let name = draftedAntProfile
+        profileStore.save(name)
+        use(antProfile: name)
+        await refreshCredential()
     }
 
     /// Downloads yt-dlp the first time, and looks for a newer release after that.
@@ -96,6 +113,17 @@ public final class SettingsModel {
         backend.setApiKey(key: key)
         hasSavedKey = key != nil
         await refreshCredential()
+    }
+
+    private var draftedAntProfile: String? {
+        let name = antProfileDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
+    private func use(antProfile name: String?) {
+        backend.setAntProfile(name: name)
+        antProfile = name
+        antProfileDraft = name ?? ""
     }
 
     private func refreshCredential() async {

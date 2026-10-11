@@ -134,6 +134,12 @@ impl Backend {
         self.state.credentials().save_key(key);
     }
 
+    /// The `ant` profile the user chose in the app; `None` leaves the choice to the shell, and
+    /// then to `ant`. It matters only while no key is saved.
+    pub fn set_ant_profile(&self, name: Option<String>) {
+        self.state.credentials().save_profile(name);
+    }
+
     /// Where the Claude credential comes from, or `None` while the user has yet to provide one.
     pub async fn credential_source(&self) -> Option<String> {
         self.state.credentials().source().await

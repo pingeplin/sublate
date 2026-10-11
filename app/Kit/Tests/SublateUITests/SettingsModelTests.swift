@@ -9,10 +9,11 @@ import Testing
 struct SettingsModelTests {
     let backend = FakeBackend()
     let keyStore = FakeKeyStore()
+    let profileStore = FakeProfileStore()
     let model: SettingsModel
 
     init() {
-        model = SettingsModel(backend: backend, keyStore: keyStore)
+        model = SettingsModel(backend: backend, keyStore: keyStore, profileStore: profileStore)
     }
 
     @Test func startHandsTheSavedKeyToTheBackend() async {
@@ -31,7 +32,7 @@ struct SettingsModelTests {
 
         #expect(backend.apiKey == nil)
         #expect(!model.hasSavedKey)
-        #expect(model.credential == .available(source: "ant profile 'contents-title'"))
+        #expect(model.credential == .available(source: "the active ant profile"))
     }
 
     @Test func startWithoutAnyCredentialAsksForAKey() async {
@@ -50,7 +51,7 @@ struct SettingsModelTests {
         await model.start()
 
         #expect(model.status == .failure(KeychainError(status: errSecAuthFailed).localizedDescription))
-        #expect(model.credential == .available(source: "ant profile 'contents-title'"))
+        #expect(model.credential == .available(source: "the active ant profile"))
     }
 
     @Test func startSwitchesToANewerYtdlpWithoutForcingACheck() async {
@@ -189,6 +190,56 @@ struct SettingsModelTests {
         #expect(keyStore.key == nil)
         #expect(backend.apiKey == nil)
         #expect(!model.hasSavedKey)
-        #expect(model.credential == .available(source: "ant profile 'contents-title'"))
+        #expect(model.credential == .available(source: "the active ant profile"))
+    }
+
+    @Test func startHandsTheStoredProfileToTheBackendBeforeItAsksForTheCredential() async {
+        profileStore.name = "work"
+
+        await model.start()
+
+        #expect(backend.antProfile == "work")
+        #expect(model.antProfileDraft == "work")
+        #expect(model.credential == .available(source: "ant profile 'work'"))
+        #expect(!model.canSaveAntProfile)
+    }
+
+    @Test func savingAProfileStoresTheTrimmedNameAndUsesIt() async {
+        await model.start()
+        model.antProfileDraft = "  work\n"
+        #expect(model.canSaveAntProfile)
+
+        await model.saveAntProfile()
+
+        #expect(profileStore.name == "work")
+        #expect(backend.antProfile == "work")
+        #expect(model.antProfileDraft == "work")
+        #expect(model.credential == .available(source: "ant profile 'work'"))
+        #expect(!model.canSaveAntProfile)
+    }
+
+    @Test func savingAnEmptyProfileGoesBackToTheActiveOne() async {
+        profileStore.name = "work"
+        await model.start()
+        model.antProfileDraft = "  "
+        #expect(model.canSaveAntProfile)
+
+        await model.saveAntProfile()
+
+        #expect(profileStore.name == nil)
+        #expect(backend.antProfile == nil)
+        #expect(model.antProfileDraft.isEmpty)
+        #expect(model.credential == .available(source: "the active ant profile"))
+    }
+
+    @Test func aSavedKeyStaysInUseWhenAProfileIsChosen() async {
+        keyStore.key = "sk-ant-saved"
+        await model.start()
+        model.antProfileDraft = "work"
+
+        await model.saveAntProfile()
+
+        #expect(backend.antProfile == "work")
+        #expect(model.credential == .available(source: "your saved API key"))
     }
 }

@@ -40,7 +40,7 @@ gh release create v0.2.0 dist/Sublate-0.2.0.dmg
 
 The bundled tools are pinned by version and checksum in `vendor/tools.lock`; `make tools` rebuilds `vendor/tools` after a change there. Their licences are listed in `vendor/licenses/README.md` and ship inside the app.
 
-Developers can skip the saved key: without one, the app falls back to `ANTHROPIC_API_KEY`, then to the `ant` profile named by `ANTHROPIC_PROFILE` (default `contents-title`, created with `ant auth login --profile contents-title`), both read from the login shell.
+Developers can skip the saved key: without one, the app falls back to `ANTHROPIC_API_KEY` from the login shell, then to a token from the `ant` command line tool. The `ant` profile is the one named in Settings, else the one named by `ANTHROPIC_PROFILE`, else the profile that is active in `ant`.
 
 ## Layout
 

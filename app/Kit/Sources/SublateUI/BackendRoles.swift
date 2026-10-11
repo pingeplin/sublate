@@ -17,6 +17,7 @@ protocol ContentBackend: Sendable {
 /// What Settings asks of the backend.
 protocol SettingsBackend: Sendable {
     func setApiKey(key: String?)
+    func setAntProfile(name: String?)
     func credentialSource() async -> String?
     func ytdlpVersion() async throws -> String?
     func updateYtdlp(force: Bool) async throws -> String?
