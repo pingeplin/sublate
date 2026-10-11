@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use crate::error::AppError;
 use crate::file_name::OutputLocation;
-use crate::languages::{find_target, Language, TARGET_LANGUAGES};
+use crate::languages::{Language, TARGET_LANGUAGES};
 use crate::metadata::{SubtitleTrack, VideoMetadata};
 use crate::services::{AppState, Locations};
-use crate::subtitle_job::{download_and_translate, SubtitleOutput};
-use crate::ytdlp::YtDlp;
+use crate::subtitle_job::SubtitleOutput;
+use crate::update::Version;
 
 /// Flattened to its message, so the UI handles one case whatever the cause.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -125,19 +125,14 @@ impl Backend {
 
     /// The yt-dlp release in use, or `None` until one has been downloaded.
     pub async fn ytdlp_version(&self) -> BackendResult<Option<String>> {
-        Ok(version_text(&self.state.services().await?.ytdlp))
+        Ok(version_text(self.state.ytdlp_version().await?))
     }
 
     /// Switches to the latest yt-dlp release when it is newer, and returns the version now in
     /// use. Unless forced, the first release is not downloaded and the release feed is asked
     /// at most once a day.
     pub async fn update_ytdlp(&self, force: bool) -> BackendResult<Option<String>> {
-        let services = self.state.services().await?;
-        let current = services.ytdlp.version();
-        if let Some(install) = services.updater.refresh(current.as_ref(), force).await? {
-            services.ytdlp.switch_to(install);
-        }
-        Ok(version_text(&services.ytdlp))
+        Ok(version_text(self.state.update_ytdlp(force).await?))
     }
 
     /// Deletes the downloaded yt-dlp and the caches; yt-dlp has to be downloaded again.
@@ -146,8 +141,7 @@ impl Backend {
     }
 
     pub async fn fetch_metadata(&self, url: String) -> BackendResult<VideoMetadata> {
-        let services = self.state.services().await?;
-        Ok(services.ytdlp.fetch_metadata(url.trim()).await?)
+        Ok(self.state.fetch_metadata(&url).await?)
     }
 
     pub async fn download_video(
@@ -156,9 +150,8 @@ impl Backend {
         out_dir: String,
         listener: Arc<dyn VideoProgressListener>,
     ) -> BackendResult<String> {
-        let services = self.state.services().await?;
-        let path = services
-            .ytdlp
+        let path = self
+            .state
             .download_video(&video.url, &video.output(out_dir), |percent| {
                 listener.on_video_progress(percent)
             })
@@ -174,18 +167,12 @@ impl Backend {
         target: String,
         listener: Arc<dyn TranslationProgressListener>,
     ) -> BackendResult<SubtitleFiles> {
-        let target = find_target(&target).ok_or(AppError::UnknownLanguage(target))?;
-        let services = self.state.services().await?;
-        let output = download_and_translate(
-            &services.ytdlp,
-            services.translator.as_ref(),
-            &video.url,
-            &video.output(out_dir),
-            &track,
-            target,
-            |done, total| listener.on_translation_progress(done as u64, total as u64),
-        )
-        .await?;
+        let output = self
+            .state
+            .translate_subtitles(&video.url, &video.output(out_dir), &track, &target, |done, total| {
+                listener.on_translation_progress(done as u64, total as u64)
+            })
+            .await?;
         Ok(output.into())
     }
 }
@@ -194,8 +181,8 @@ fn path_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn version_text(ytdlp: &YtDlp) -> Option<String> {
-    ytdlp.version().map(|version| version.to_string())
+fn version_text(version: Option<Version>) -> Option<String> {
+    version.map(|version| version.to_string())
 }
 
 #[cfg(test)]

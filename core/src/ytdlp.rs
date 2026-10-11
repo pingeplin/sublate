@@ -1,13 +1,14 @@
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::sync::{Arc, Mutex, RwLock};
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use async_trait::async_trait;
 
 use crate::disk;
 use crate::error::{AppError, AppResult};
 use crate::file_name::OutputLocation;
 use crate::metadata::{parse_metadata, SubtitleTrack, TrackKind, VideoMetadata};
+use crate::process;
+use crate::subtitle_job::SubtitleSource;
 use crate::toolchain::Toolchain;
 use crate::update::{Install, Version};
 
@@ -123,26 +124,6 @@ impl YtDlp {
             .ok_or_else(|| AppError::YtDlp("video path not reported".into()))
     }
 
-    pub async fn download_subtitle(
-        &self,
-        url: &str,
-        out: &OutputLocation,
-        track: &SubtitleTrack,
-    ) -> AppResult<PathBuf> {
-        let flags = ["--skip-download", write_flag(track.kind), "--sub-langs", &track.code, "--convert-subs", "srt"];
-        self.download(url, out, &flags, |_| {}).await?;
-        let path = out.subtitle(&track.code);
-        if path.is_file() {
-            Ok(path)
-        } else {
-            Err(AppError::YtDlp(format!(
-                "subtitle '{}' was not produced at {}",
-                track.code,
-                path.display()
-            )))
-        }
-    }
-
     /// Runs inside the output directory with a relative template, so the directory path is
     /// never subject to yt-dlp's template or environment-variable expansion. Reuses the
     /// fetched info JSON when available; its stream URLs expire after a few hours, so a
@@ -194,47 +175,40 @@ impl YtDlp {
     ) -> AppResult<String> {
         let program = self.install().ok_or(AppError::YtDlpMissing)?.program;
         let mut command = tokio::process::Command::new(&program);
-        command
-            .args(args)
-            .env("PATH", SYSTEM_PATH)
-            .env("DENO_DIR", &self.deno_dir)
-            .kill_on_drop(true)
-            .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        command.args(args).env("PATH", SYSTEM_PATH).env("DENO_DIR", &self.deno_dir);
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
-        let mut child = command
-            .spawn()
+        let running = process::spawn(command, stdin)
             .map_err(|e| AppError::YtDlp(format!("cannot start {}: {e}", program.display())))?;
-
-        if let (Some(input), Some(mut pipe)) = (stdin, child.stdin.take()) {
-            tokio::spawn(async move {
-                let _ = pipe.write_all(input.as_bytes()).await;
-            });
-        }
-        let mut stderr = child.stderr.take().expect("stderr is piped");
-        let stderr_task = tokio::spawn(async move {
-            let mut buf = String::new();
-            let _ = stderr.read_to_string(&mut buf).await;
-            buf
-        });
-
-        let mut stdout = String::new();
-        let mut lines = BufReader::new(child.stdout.take().expect("stdout is piped")).lines();
-        while let Some(line) = lines.next_line().await? {
-            on_line(&line);
-            stdout.push_str(&line);
-            stdout.push('\n');
-        }
-
-        let status = child.wait().await?;
-        let stderr = stderr_task.await.unwrap_or_default();
-        if status.success() {
-            Ok(stdout)
+        let output = running.finish(on_line).await?;
+        if output.status.success() {
+            Ok(output.stdout)
         } else {
-            Err(AppError::YtDlp(tail(&stderr, STDERR_TAIL_LINES)))
+            Err(AppError::YtDlp(tail(&output.stderr, STDERR_TAIL_LINES)))
+        }
+    }
+}
+
+#[async_trait]
+impl SubtitleSource for YtDlp {
+    async fn download_subtitle(
+        &self,
+        url: &str,
+        out: &OutputLocation,
+        track: &SubtitleTrack,
+    ) -> AppResult<PathBuf> {
+        let flags = ["--skip-download", write_flag(track.kind), "--sub-langs", &track.code, "--convert-subs", "srt"];
+        self.download(url, out, &flags, |_| {}).await?;
+        let path = out.subtitle(&track.code);
+        if path.is_file() {
+            Ok(path)
+        } else {
+            Err(AppError::YtDlp(format!(
+                "subtitle '{}' was not produced at {}",
+                track.code,
+                path.display()
+            )))
         }
     }
 }
@@ -354,6 +328,132 @@ mod tests {
 
         assert_eq!(ytdlp.version(), None);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    const URL: &str = "https://example.com/v";
+    const INFO: &str = r#"{"id": "abc", "title": "Title"}"#;
+
+    /// A stand-in release: a shell script run in place of yt-dlp.
+    fn scripted(dir: &Path, script: &str) -> YtDlp {
+        use std::os::unix::fs::PermissionsExt;
+        let install = Install::at(Version::parse("2026.08.19").unwrap(), dir);
+        std::fs::write(&install.program, format!("#!/bin/sh\n{script}\n")).unwrap();
+        std::fs::set_permissions(&install.program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        YtDlp::new(tools(), Some(install), &dir.join("cache"))
+    }
+
+    fn english() -> SubtitleTrack {
+        SubtitleTrack {
+            code: "en".into(),
+            name: "English".into(),
+            kind: TrackKind::Manual,
+        }
+    }
+
+    #[tokio::test]
+    async fn fetching_runs_the_installed_release_and_reads_what_it_prints() {
+        let dir = tempfile::tempdir().unwrap();
+        let ytdlp = scripted(dir.path(), &format!("echo '{INFO}'"));
+
+        let metadata = ytdlp.fetch_metadata(URL).await.unwrap();
+
+        assert_eq!((metadata.id.as_str(), metadata.title.as_str()), ("abc", "Title"));
+        assert!(ytdlp.cached_info(URL).is_some());
+    }
+
+    #[tokio::test]
+    async fn every_run_sees_the_system_path_and_the_app_s_deno_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let ytdlp = scripted(dir.path(), r#"echo "{\"id\": \"$PATH\", \"title\": \"$DENO_DIR\"}""#);
+
+        let metadata = ytdlp.fetch_metadata(URL).await.unwrap();
+
+        assert_eq!(metadata.id, SYSTEM_PATH);
+        assert_eq!(Path::new(&metadata.title), dir.path().join("cache/deno"));
+    }
+
+    #[tokio::test]
+    async fn a_failed_run_reports_the_end_of_its_error_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let ytdlp = scripted(dir.path(), "echo 'WARNING: slow' >&2; echo 'ERROR: Unsupported URL' >&2; exit 1");
+
+        let err = ytdlp.fetch_metadata(URL).await.unwrap_err();
+
+        assert_eq!(err.to_string(), "yt-dlp failed: WARNING: slow\nERROR: Unsupported URL");
+    }
+
+    #[tokio::test]
+    async fn a_release_that_cannot_start_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let ytdlp = YtDlp::new(tools(), Some(install("2026.08.19")), dir.path());
+
+        let err = ytdlp.fetch_metadata(URL).await.unwrap_err().to_string();
+
+        assert!(err.starts_with("yt-dlp failed: cannot start /support/2026.08.19/yt-dlp_macos: "), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_video_download_reports_progress_and_the_path_it_wrote() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = "echo 'CT_PROGRESS 12.5'; echo '[download] noise'; echo 'CT_PROGRESS 100.0'
+            : > ran-here; echo 'CT_PATH /out/Title [abc].mp4'";
+        let ytdlp = scripted(dir.path(), script);
+        let out = OutputLocation::new(dir.path().join("new dir"), "Title", "abc");
+        let progress = Mutex::new(Vec::new());
+
+        let path = ytdlp.download_video(URL, &out, |percent| progress.lock().unwrap().push(percent)).await.unwrap();
+
+        assert_eq!(path, Path::new("/out/Title [abc].mp4"));
+        assert_eq!(progress.into_inner().unwrap(), [12.5, 100.0]);
+        assert!(out.dir().join("ran-here").is_file());
+    }
+
+    #[tokio::test]
+    async fn a_download_reuses_the_fetched_info_instead_of_the_page() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = format!(
+            r#"case " $* " in
+                *" -J "*) echo '{INFO}' ;;
+                *" --load-info-json - "*) cat > info.json; : > 'Title [abc].en.srt' ;;
+                *) exit 1 ;;
+            esac"#
+        );
+        let ytdlp = scripted(dir.path(), &script);
+        let out = OutputLocation::new(dir.path().join("out"), "Title", "abc");
+        ytdlp.fetch_metadata(URL).await.unwrap();
+
+        let path = ytdlp.download_subtitle(URL, &out, &english()).await.unwrap();
+
+        assert_eq!(path, out.subtitle("en"));
+        assert_eq!(std::fs::read_to_string(out.dir().join("info.json")).unwrap(), format!("{INFO}\n"));
+    }
+
+    #[tokio::test]
+    async fn a_download_falls_back_to_the_page_when_the_fetched_info_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = format!(
+            r#"case " $* " in
+                *" -J "*) echo '{INFO}' ;;
+                *" --load-info-json - "*) echo 'ERROR: expired' >&2; exit 1 ;;
+                *" -- {URL} "*) : > 'Title [abc].en.srt' ;;
+            esac"#
+        );
+        let ytdlp = scripted(dir.path(), &script);
+        let out = OutputLocation::new(dir.path().join("out"), "Title", "abc");
+        ytdlp.fetch_metadata(URL).await.unwrap();
+
+        assert_eq!(ytdlp.download_subtitle(URL, &out, &english()).await.unwrap(), out.subtitle("en"));
+    }
+
+    #[tokio::test]
+    async fn a_subtitle_that_was_not_written_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let ytdlp = scripted(dir.path(), "exit 0");
+        let out = OutputLocation::new(dir.path().join("out"), "Title", "abc");
+
+        let err = ytdlp.download_subtitle(URL, &out, &english()).await.unwrap_err().to_string();
+
+        assert!(err.starts_with("yt-dlp failed: subtitle 'en' was not produced at "), "{err}");
     }
 
     #[test]

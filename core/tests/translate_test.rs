@@ -1,15 +1,17 @@
 mod common;
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
 use common::{fixture_path, ko_auto_track};
 use sublate_core::error::{AppError, AppResult};
+use sublate_core::file_name::OutputLocation;
 use sublate_core::languages::find_target;
 use sublate_core::metadata::{SubtitleTrack, TrackKind};
 use sublate_core::subtitle::{parse_srt, Cue};
-use sublate_core::subtitle_job::translate_subtitle_file;
+use sublate_core::subtitle_job::{download_and_translate, translate_subtitle_file, SubtitleSource};
 use sublate_core::translate::{translate_cues, BatchRequest, TranslationPlan, Translator};
 
 /// (context, lines, source language, target language)
@@ -204,6 +206,83 @@ async fn subtitle_file_job_normalizes_punctuation_for_the_target_language() {
         let written = parse_srt(&std::fs::read_to_string(&output).unwrap()).unwrap();
         assert_eq!(written[0].text, expected, "target {target}");
     }
+}
+
+/// Writes one cue where the track belongs, or fails when the video has no such track.
+struct OneCueSource;
+
+#[async_trait]
+impl SubtitleSource for OneCueSource {
+    async fn download_subtitle(
+        &self,
+        _url: &str,
+        out: &OutputLocation,
+        track: &SubtitleTrack,
+    ) -> AppResult<PathBuf> {
+        if track.code == "missing" {
+            return Err(AppError::YtDlp("no such track".into()));
+        }
+        let path = out.subtitle(&track.code);
+        std::fs::write(&path, "1\n00:00:01,000 --> 00:00:02,000\nhello\n").unwrap();
+        Ok(path)
+    }
+}
+
+fn manual_track(code: &str) -> SubtitleTrack {
+    SubtitleTrack { code: code.into(), name: "English".into(), kind: TrackKind::Manual }
+}
+
+#[tokio::test]
+async fn subtitle_job_writes_the_translation_beside_the_downloaded_track() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = OutputLocation::new(dir.path(), "Title", "abc");
+
+    for (target, translated_path) in [
+        ("zh-TW", out.subtitle("zh-TW")),
+        ("en", out.subtitle("en.translated")),
+    ] {
+        let output = download_and_translate(
+            &OneCueSource,
+            &UppercaseTranslator::default(),
+            "https://example.com/v",
+            &out,
+            &manual_track("en"),
+            find_target(target).unwrap(),
+            |_, _| {},
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(output.source_path, out.subtitle("en"));
+        assert_eq!(output.translated_path, translated_path, "target {target}");
+        assert_eq!(output.cue_count, 1);
+        let read = |path| parse_srt(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(read(&output.source_path)[0].text, "hello");
+        assert_eq!(read(&output.translated_path)[0].text, "HELLO");
+    }
+}
+
+#[tokio::test]
+async fn subtitle_job_translates_nothing_when_the_download_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = OutputLocation::new(dir.path(), "Title", "abc");
+    let translator = UppercaseTranslator::default();
+
+    let err = download_and_translate(
+        &OneCueSource,
+        &translator,
+        "https://example.com/v",
+        &out,
+        &manual_track("missing"),
+        find_target("zh-TW").unwrap(),
+        |_, _| {},
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(err, AppError::YtDlp(_)));
+    assert!(translator.requests.into_inner().unwrap().is_empty());
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 }
 
 /// Cuts off any batch larger than two lines, like a response hitting max_tokens.

@@ -21,9 +21,9 @@ public final class ContentModel {
     private(set) var files: [OutputFile] = []
     private(set) var isBusy = false
 
-    private let backend: any BackendProtocol
+    private let backend: any ContentBackend
 
-    init(backend: any BackendProtocol, outputDirectory: URL) {
+    init(backend: any ContentBackend, outputDirectory: URL) {
         self.backend = backend
         self.outputDirectory = outputDirectory
     }

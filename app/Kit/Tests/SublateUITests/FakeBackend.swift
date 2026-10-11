@@ -1,7 +1,9 @@
 import SublateCore
 
+@testable import SublateUI
+
 @MainActor
-final class FakeBackend: BackendProtocol {
+final class FakeBackend: ContentBackend, SettingsBackend {
     nonisolated static let languages = [
         TargetLanguage(code: "zh-TW", native: "繁體中文（台灣）"),
         TargetLanguage(code: "en", native: "English"),

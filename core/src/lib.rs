@@ -5,6 +5,7 @@ mod ffi;
 pub mod file_name;
 pub mod languages;
 pub mod metadata;
+mod process;
 pub mod process_env;
 pub mod punctuation;
 mod services;
