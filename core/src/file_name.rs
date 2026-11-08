@@ -21,7 +21,8 @@ pub fn file_stem(title: &str, id: &str) -> String {
     }
 }
 
-/// Where every file for one video goes: `<dir>/<stem>.<ext>` and `<dir>/<stem>.<lang>.srt`.
+/// Where every file for one video goes: a folder of its own under the chosen directory,
+/// `<dir>/<stem>/`, holding `<stem>.<ext>` and `<stem>.<lang>.srt`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputLocation {
     dir: PathBuf,
@@ -29,13 +30,15 @@ pub struct OutputLocation {
 }
 
 impl OutputLocation {
-    pub fn new(dir: impl Into<PathBuf>, title: &str, id: &str) -> Self {
+    pub fn new(parent: impl Into<PathBuf>, title: &str, id: &str) -> Self {
+        let stem = file_stem(title, id);
         Self {
-            dir: dir.into(),
-            stem: file_stem(title, id),
+            dir: parent.into().join(&stem),
+            stem,
         }
     }
 
+    /// The video's own folder.
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -185,13 +188,19 @@ mod tests {
     fn location_derives_template_and_subtitle_paths_from_one_stem() {
         let out = OutputLocation::new("/o", "100% 확실? ", "id");
         assert_eq!(out.ytdlp_template(), "100%% 확실？ [id].%(ext)s");
-        assert_eq!(out.subtitle("zh-TW"), PathBuf::from("/o/100% 확실？ [id].zh-TW.srt"));
+        assert_eq!(out.subtitle("zh-TW"), PathBuf::from("/o/100% 확실？ [id]/100% 확실？ [id].zh-TW.srt"));
+    }
+
+    #[test]
+    fn each_video_gets_a_folder_named_like_its_files() {
+        assert_eq!(OutputLocation::new("/o", "T", "id").dir(), Path::new("/o/T [id]"));
+        assert_eq!(OutputLocation::new("/o", " .. ", "id").dir(), Path::new("/o/id"));
     }
 
     #[test]
     fn translation_never_overwrites_its_source() {
         let out = OutputLocation::new("/o", "T", "id");
-        assert_eq!(out.translation("ko-orig", "zh-TW"), PathBuf::from("/o/T [id].zh-TW.srt"));
-        assert_eq!(out.translation("en", "en"), PathBuf::from("/o/T [id].en.translated.srt"));
+        assert_eq!(out.translation("ko-orig", "zh-TW"), PathBuf::from("/o/T [id]/T [id].zh-TW.srt"));
+        assert_eq!(out.translation("en", "en"), PathBuf::from("/o/T [id]/T [id].en.translated.srt"));
     }
 }

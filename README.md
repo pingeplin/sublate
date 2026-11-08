@@ -54,7 +54,7 @@ Developers can skip the saved key: without one, the app falls back to `ANTHROPIC
 
 ## Output
 
-Files land in `~/Downloads/Sublate/` by default, named `<title> [<id>]` so same-titled videos never collide (reserved characters such as `? / : $` become full-width look-alikes; the id alone is used if the title is empty). Long titles are shortened so every name stays within 255 bytes in decomposed (NFD) UTF-8, the limit Synology Drive enforces:
+Each video gets its own folder in `~/Downloads/Sublate/` by default (or the folder chosen under **Save to**). The folder and its files are named `<title> [<id>]` so same-titled videos never collide (reserved characters such as `? / : $` become full-width look-alikes; the id alone is used if the title is empty). Long titles are shortened so every name stays within 255 bytes in decomposed (NFD) UTF-8, the limit Synology Drive enforces:
 
 | File | Content |
 | --- | --- |

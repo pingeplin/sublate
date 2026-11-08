@@ -223,7 +223,8 @@ impl SubtitleSource for OneCueSource {
             return Err(AppError::YtDlp("no such track".into()));
         }
         let path = out.subtitle(&track.code);
-        std::fs::write(&path, "1\n00:00:01,000 --> 00:00:02,000\nhello\n").unwrap();
+        std::fs::create_dir_all(out.dir()).unwrap();
+        std::fs::write(&path,"1\n00:00:01,000 --> 00:00:02,000\nhello\n").unwrap();
         Ok(path)
     }
 }
