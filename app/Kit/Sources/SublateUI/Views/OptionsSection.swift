@@ -8,6 +8,13 @@ struct OptionsSection: View {
 
     var body: some View {
         Section {
+            Picker("Get", selection: $model.content) {
+                ForEach(ContentChoice.allCases, id: \.self) { choice in
+                    Text(choice.label).tag(choice)
+                }
+            }
+            .pickerStyle(.segmented)
+
             Picker("Source subtitle", selection: $model.sourceTrack) {
                 if tracks.isEmpty {
                     Text("No subtitles available").tag(SubtitleTrack?.none)
@@ -23,13 +30,14 @@ struct OptionsSection: View {
                     }
                 }
             }
-            .disabled(tracks.isEmpty)
+            .disabled(tracks.isEmpty || !model.content.includesSubtitles)
 
             Picker("Target subtitle", selection: $model.targetCode) {
                 ForEach(model.languages, id: \.code) { language in
                     Text(language.label).tag(language.code)
                 }
             }
+            .disabled(!model.content.includesSubtitles)
 
             LabeledContent("Save to") {
                 Text(model.outputDirectory.abbreviatedPath)
@@ -39,8 +47,6 @@ struct OptionsSection: View {
                 Button("Choose…") { isChoosingFolder = true }
                     .disabled(model.isBusy)
             }
-
-            Toggle("Download video", isOn: $model.downloadsVideo)
         } footer: {
             Button("Get Content") {
                 Task { await model.getContent() }
@@ -48,7 +54,7 @@ struct OptionsSection: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(model.isBusy)
+            .disabled(!model.canGetContent)
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .fileImporter(isPresented: $isChoosingFolder, allowedContentTypes: [.folder]) { result in

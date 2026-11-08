@@ -1,6 +1,6 @@
 # Sublate
 
-Native macOS app (SwiftUI front end, Rust core): paste a video URL, inspect its metadata with `yt-dlp`, download the video, and translate a subtitle track into another language with Claude. Subtitles are written as standalone `.srt` files — never merged into the video.
+Native macOS app (SwiftUI front end, Rust core): paste a video URL, inspect its metadata with `yt-dlp`, download the video, translate a subtitle track into another language with Claude, or both. Subtitles are written as standalone `.srt` files — never merged into the video.
 
 ## Install
 

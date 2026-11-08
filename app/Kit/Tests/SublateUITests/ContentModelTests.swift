@@ -118,15 +118,44 @@ struct ContentModelTests {
         #expect(model.progress == JobProgress(videoPercent: 100, subtitles: .translating(done: 2, total: 2)))
     }
 
-    @Test func getContentSkipsTheVideoWhenNotWanted() async {
+    @Test func subtitlesOnlySkipsTheVideo() async {
         let model = await fetched()
-        model.downloadsVideo = false
+        model.content = .subtitles
 
         await model.getContent()
 
         #expect(backend.videoRequests.isEmpty)
         #expect(model.progress?.videoPercent == nil)
         #expect(model.files.map(\.label) == ["Source subtitle (en)", "Translated subtitle (zh-TW, 2 cues)"])
+    }
+
+    @Test func videoOnlySkipsTheSubtitles() async {
+        let model = await fetched()
+        model.content = .video
+
+        await model.getContent()
+
+        #expect(backend.subtitleRequests.isEmpty)
+        #expect(model.progress == JobProgress(videoPercent: 100, subtitles: nil))
+        #expect(model.files.map(\.label) == ["Video"])
+        #expect(model.status == .info("Done."))
+    }
+
+    @Test func subtitlesOnlyCannotStartWithoutATrack() async {
+        backend.metadata = .success(.sample(subtitles: []))
+        let model = await fetched()
+        #expect(model.canGetContent)
+
+        model.content = .subtitles
+        #expect(!model.canGetContent)
+        await model.getContent()
+
+        #expect(backend.videoRequests.isEmpty)
+        #expect(model.progress == nil)
+    }
+
+    @Test func getContentCannotStartBeforeAFetch() {
+        #expect(!model.canGetContent)
     }
 
     @Test func getContentWithoutATrackOnlyDownloadsTheVideo() async {

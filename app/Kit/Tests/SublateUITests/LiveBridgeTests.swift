@@ -33,7 +33,7 @@ struct LiveBridgeTests {
         #expect(model.video?.title == "Me at the zoo")
         #expect(model.status == .info("Done."))
         #expect(model.progress?.videoPercent == 100)
-        #expect(model.progress?.subtitles.fraction == 1)
+        #expect(model.progress?.subtitles?.fraction == 1)
         #expect(model.files.count == 3)
         #expect(model.files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.filePath) })
 

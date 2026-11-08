@@ -12,7 +12,7 @@ public final class ContentModel {
     var sourceTrack: SubtitleTrack?
     var targetCode = ContentModel.defaultTarget
     var outputDirectory: URL
-    var downloadsVideo = true
+    var content = ContentChoice.videoAndSubtitles
 
     private(set) var status = Status.idle
     private(set) var languages: [TargetLanguage] = []
@@ -30,6 +30,11 @@ public final class ContentModel {
 
     var canFetch: Bool {
         !isBusy && !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Subtitles alone need a track to translate.
+    var canGetContent: Bool {
+        !isBusy && video != nil && (content.includesVideo || sourceTrack != nil)
     }
 
     func start() {
@@ -53,19 +58,20 @@ public final class ContentModel {
         }
     }
 
-    /// Downloads the video and translates the subtitle side by side; one failing doesn't stop the other.
+    /// Downloads the video and translates the subtitle side by side, each only when the chosen
+    /// content includes it; one failing doesn't stop the other.
     func getContent() async {
-        guard let video else { return }
+        guard canGetContent, let video else { return }
         let reference = video.reference
         let directory = outputDirectory.filePath
-        let track = sourceTrack
+        let withVideo = content.includesVideo
+        let track = content.includesSubtitles ? sourceTrack : nil
         let target = targetCode
-        let withVideo = downloadsVideo
 
         files = []
         progress = JobProgress(
             videoPercent: withVideo ? 0 : nil,
-            subtitles: track == nil ? .unavailable : .downloading
+            subtitles: content.includesSubtitles ? (track == nil ? .unavailable : .downloading) : nil
         )
         isBusy = true
         defer { isBusy = false }

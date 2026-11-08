@@ -8,7 +8,9 @@ struct ProgressSection: View {
             if let percent = progress.videoPercent {
                 ProgressView("Video", value: percent, total: 100)
             }
-            ProgressView(progress.subtitles.label, value: progress.subtitles.fraction)
+            if let subtitles = progress.subtitles {
+                ProgressView(subtitles.label, value: subtitles.fraction)
+            }
         }
     }
 }
