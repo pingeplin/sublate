@@ -117,9 +117,10 @@ impl AppState {
         &self,
         url: &str,
         out: &OutputLocation,
+        max_height: Option<u32>,
         on_progress: impl Fn(f32),
     ) -> AppResult<PathBuf> {
-        self.services().await?.ytdlp.download_video(url, out, on_progress).await
+        self.services().await?.ytdlp.download_video(url, out, max_height, on_progress).await
     }
 
     /// Downloads a subtitle track and translates it into the language with code `target`. The

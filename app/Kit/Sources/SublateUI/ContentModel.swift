@@ -13,6 +13,8 @@ public final class ContentModel {
     var targetCode = ContentModel.defaultTarget
     var outputDirectory: URL
     var content = ContentChoice.videoAndSubtitles
+    /// `nil` takes the best the video offers.
+    var maxHeight: UInt32?
 
     private(set) var status = Status.idle
     private(set) var languages: [TargetLanguage] = []
@@ -49,6 +51,7 @@ public final class ContentModel {
             let fetched = try await backend.fetchMetadata(url: urlText)
             video = fetched
             sourceTrack = fetched.subtitles.first
+            maxHeight = nil
             files = []
             progress = nil
             status = .idle
@@ -65,6 +68,7 @@ public final class ContentModel {
         let reference = video.reference
         let directory = outputDirectory.filePath
         let withVideo = content.includesVideo
+        let height = maxHeight
         let track = content.includesSubtitles ? sourceTrack : nil
         let target = targetCode
 
@@ -78,7 +82,7 @@ public final class ContentModel {
         status = .info("Working…")
 
         async let videoFailure = failure {
-            if withVideo { try await downloadVideo(reference, to: directory) }
+            if withVideo { try await downloadVideo(reference, maxHeight: height, to: directory) }
         }
         async let subtitleFailure = failure {
             if let track { try await translateSubtitles(reference, track: track, target: target, to: directory) }
@@ -87,9 +91,9 @@ public final class ContentModel {
         status = failures.isEmpty ? .info("Done.") : .failure(failures.joined(separator: "\n"))
     }
 
-    private func downloadVideo(_ video: VideoRef, to directory: String) async throws {
+    private func downloadVideo(_ video: VideoRef, maxHeight: UInt32?, to directory: String) async throws {
         let path = try await tracking({ self.progress?.videoPercent = $0 }) { [backend] channel in
-            try await backend.downloadVideo(video: video, outDir: directory, listener: channel)
+            try await backend.downloadVideo(video: video, outDir: directory, maxHeight: maxHeight, listener: channel)
         }
         files.append(OutputFile(label: "Video", url: URL(filePath: path)))
     }

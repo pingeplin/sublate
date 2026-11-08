@@ -73,3 +73,26 @@ fn playlists_are_rejected() {
     let video = r#"{ "_type": "video", "id": "x", "title": "t" }"#;
     assert!(parse_metadata(video, "u").is_ok());
 }
+
+#[test]
+fn heights_list_each_video_stream_height_once_largest_first() {
+    let json = r#"{
+        "id": "x", "title": "t",
+        "formats": [
+            { "format_id": "sb0", "vcodec": "none", "height": 27 },
+            { "format_id": "251", "vcodec": "none", "height": null },
+            { "format_id": "160", "vcodec": "avc1.4D400C", "height": 140 },
+            { "format_id": "135", "vcodec": "avc1.4D401F", "height": 470 },
+            { "format_id": "397", "vcodec": "av01.0.04M.08", "height": 470 },
+            { "format_id": "788", "vcodec": "av01.0.04M.08", "height": 480.0 },
+            { "format_id": "hls", "height": 1080 },
+            { "format_id": "raw", "vcodec": "h264" }
+        ]
+    }"#;
+    assert_eq!(parse_metadata(json, "u").unwrap().heights, [1080, 480, 470, 140]);
+}
+
+#[test]
+fn a_video_without_formats_has_no_heights() {
+    assert!(parse_metadata(&fixture("en_manual.json"), "u").unwrap().heights.is_empty());
+}

@@ -35,6 +35,7 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     struct VideoRequest: Equatable {
         let video: VideoRef
         let outDir: String
+        var maxHeight: UInt32?
     }
 
     struct SubtitleRequest: Equatable {
@@ -90,8 +91,13 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
         return try metadata.get()
     }
 
-    func downloadVideo(video: VideoRef, outDir: String, listener: VideoProgressListener) async throws -> String {
-        videoRequests.append(VideoRequest(video: video, outDir: outDir))
+    func downloadVideo(
+        video: VideoRef,
+        outDir: String,
+        maxHeight: UInt32?,
+        listener: VideoProgressListener
+    ) async throws -> String {
+        videoRequests.append(VideoRequest(video: video, outDir: outDir, maxHeight: maxHeight))
         videoProgress.forEach(listener.onVideoProgress)
         return try self.video.get()
     }
@@ -126,7 +132,8 @@ extension VideoMetadata {
             thumbnail: "https://example.com/t.jpg",
             duration: 75,
             url: "https://example.com/watch?v=abc",
-            subtitles: subtitles
+            subtitles: subtitles,
+            heights: [1080, 720, 360]
         )
     }
 }

@@ -91,10 +91,13 @@ impl YtDlp {
         Ok(metadata)
     }
 
+    /// `max_height` caps the video at the tallest stream no taller than it, or the shortest
+    /// one when every stream is taller; `None` takes the best stream.
     pub async fn download_video(
         &self,
         url: &str,
         out: &OutputLocation,
+        max_height: Option<u32>,
         on_progress: impl Fn(f32),
     ) -> AppResult<PathBuf> {
         let progress = format!("download:{PROGRESS_TAG} %(progress._percent)s");
@@ -102,14 +105,21 @@ impl YtDlp {
         // Always an mp4 carrying the thumbnail as cover art, so Quick Look (Finder, open
         // dialogs) previews it and players show the cover. mp4 is forced because yt-dlp's
         // `mp4/mkv` fallback picks mkv whenever the audio is Opus. Streams are copied at best
-        // quality rather than selected for H.264 (yt-dlp's `-t mp4` preset, capped near
-        // 1080p), so AV1/VP9 videos still need VLC or IINA instead of QuickTime.
+        // quality within `max_height` rather than selected for H.264 (yt-dlp's `-t mp4`
+        // preset, capped near 1080p), so AV1/VP9 videos still need VLC or IINA instead of
+        // QuickTime.
         #[rustfmt::skip]
-        let flags = [
+        let mut flags = vec![
             "--newline", "--progress", "--progress-template", &progress, "--print", &path,
             "--merge-output-format", "mp4", "--remux-video", "mp4",
             "--embed-thumbnail", "--convert-thumbnails", "jpg",
         ];
+        // A sort preference, not a `-f` filter: it still picks a stream when a fresh page
+        // extraction offers different heights. `height`, not `res`, which is the smaller side.
+        let sort = max_height.map(|h| format!("height:{h}"));
+        if let Some(sort) = &sort {
+            flags.extend(["-S", sort]);
+        }
         let stdout = self
             .download(url, out, &flags, |line| {
                 if let Some(percent) = tagged(line, PROGRESS_TAG).and_then(|v| v.parse().ok()) {
@@ -401,11 +411,32 @@ mod tests {
         let out = OutputLocation::new(dir.path().join("new dir"), "Title", "abc");
         let progress = Mutex::new(Vec::new());
 
-        let path = ytdlp.download_video(URL, &out, |percent| progress.lock().unwrap().push(percent)).await.unwrap();
+        let path = ytdlp.download_video(URL, &out, None, |percent| progress.lock().unwrap().push(percent)).await.unwrap();
 
         assert_eq!(path, Path::new("/out/Title [abc].mp4"));
         assert_eq!(progress.into_inner().unwrap(), [12.5, 100.0]);
         assert!(out.dir().join("ran-here").is_file());
+    }
+
+    #[tokio::test]
+    async fn a_height_limit_becomes_a_sort_preference_and_no_limit_adds_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let ytdlp = scripted(dir.path(), r#"echo "$*" > args; echo 'CT_PATH /out/Title [abc].mp4'"#);
+        let args_for = |max_height| {
+            let out = OutputLocation::new(dir.path().join(format!("{max_height:?}")), "Title", "abc");
+            let ytdlp = &ytdlp;
+            async move {
+                ytdlp.download_video(URL, &out, max_height, |_| {}).await.unwrap();
+                let args = std::fs::read_to_string(out.dir().join("args")).unwrap();
+                args.split_whitespace().map(String::from).collect::<Vec<_>>()
+            }
+        };
+
+        let limited = args_for(Some(720)).await;
+        let unlimited = args_for(None).await;
+
+        assert!(limited.windows(2).any(|pair| pair == ["-S", "height:720"]), "{limited:?}");
+        assert!(!unlimited.iter().any(|arg| arg == "-S"), "{unlimited:?}");
     }
 
     #[tokio::test]

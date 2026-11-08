@@ -78,7 +78,7 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
     let out = OutputLocation::new(dir.path().join("dir $HOME 100%"), "Save $HOME 100%?", &meta.id);
     let progress = std::sync::Mutex::new(Vec::new());
     let path = ytdlp
-        .download_video(&meta.url, &out, |p| progress.lock().unwrap().push(p))
+        .download_video(&meta.url, &out, None, |p| progress.lock().unwrap().push(p))
         .await
         .unwrap();
     let files: Vec<String> = std::fs::read_dir(out.dir())

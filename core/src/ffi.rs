@@ -173,15 +173,18 @@ impl Backend {
         Ok(self.state.fetch_metadata(&url).await?)
     }
 
+    /// `max_height` caps the video height, typically at one of the video's `heights`; `None`
+    /// takes the best quality.
     pub async fn download_video(
         &self,
         video: VideoRef,
         out_dir: String,
+        max_height: Option<u32>,
         listener: Arc<dyn VideoProgressListener>,
     ) -> BackendResult<String> {
         let path = self
             .state
-            .download_video(&video.url, &video.output(out_dir), |percent| {
+            .download_video(&video.url, &video.output(out_dir), max_height, |percent| {
                 listener.on_video_progress(percent)
             })
             .await?;

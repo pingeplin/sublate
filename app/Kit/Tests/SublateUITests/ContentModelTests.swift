@@ -129,6 +129,24 @@ struct ContentModelTests {
         #expect(model.files.map(\.label) == ["Source subtitle (en)", "Translated subtitle (zh-TW, 2 cues)"])
     }
 
+    @Test func getContentCapsTheVideoAtTheChosenHeight() async {
+        let model = await fetched()
+        model.maxHeight = 720
+
+        await model.getContent()
+
+        #expect(backend.videoRequests.map(\.maxHeight) == [720])
+    }
+
+    @Test func fetchResetsTheResolutionToTheBest() async {
+        let model = await fetched()
+        model.maxHeight = 720
+
+        await model.fetchMetadata()
+
+        #expect(model.maxHeight == nil)
+    }
+
     @Test func videoOnlySkipsTheSubtitles() async {
         let model = await fetched()
         model.content = .video

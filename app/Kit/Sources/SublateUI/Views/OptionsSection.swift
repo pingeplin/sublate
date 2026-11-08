@@ -4,6 +4,7 @@ import SwiftUI
 struct OptionsSection: View {
     @Bindable var model: ContentModel
     let tracks: [SubtitleTrack]
+    let heights: [UInt32]
     @State private var isChoosingFolder = false
 
     var body: some View {
@@ -14,6 +15,14 @@ struct OptionsSection: View {
                 }
             }
             .pickerStyle(.segmented)
+
+            Picker("Resolution", selection: $model.maxHeight) {
+                Text("Best").tag(UInt32?.none)
+                ForEach(heights, id: \.self) { height in
+                    Text("\(height)p").tag(UInt32?.some(height))
+                }
+            }
+            .disabled(!model.content.includesVideo)
 
             Picker("Source subtitle", selection: $model.sourceTrack) {
                 if tracks.isEmpty {

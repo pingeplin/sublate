@@ -25,7 +25,7 @@ public struct ContentView: View {
                 Section {
                     VideoSummary(video: video)
                 }
-                OptionsSection(model: model, tracks: video.subtitles)
+                OptionsSection(model: model, tracks: video.subtitles, heights: video.heights)
                 if let progress = model.progress {
                     ProgressSection(progress: progress)
                 }

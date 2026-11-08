@@ -4,7 +4,12 @@ import SublateCore
 protocol ContentBackend: Sendable {
     func targetLanguages() -> [TargetLanguage]
     func fetchMetadata(url: String) async throws -> VideoMetadata
-    func downloadVideo(video: VideoRef, outDir: String, listener: VideoProgressListener) async throws -> String
+    func downloadVideo(
+        video: VideoRef,
+        outDir: String,
+        maxHeight: UInt32?,
+        listener: VideoProgressListener
+    ) async throws -> String
     func translateSubtitles(
         video: VideoRef,
         outDir: String,

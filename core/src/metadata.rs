@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
@@ -36,6 +36,8 @@ pub struct VideoMetadata {
     pub duration: Option<f64>,
     pub url: String,
     pub subtitles: Vec<SubtitleTrack>,
+    /// Heights of the video streams on offer, largest first.
+    pub heights: Vec<u32>,
 }
 
 type RawTracks = BTreeMap<String, Vec<RawFormat>>;
@@ -43,6 +45,21 @@ type RawTracks = BTreeMap<String, Vec<RawFormat>>;
 #[derive(Deserialize)]
 struct RawFormat {
     name: Option<String>,
+}
+
+/// yt-dlp marks a stream without video as `vcodec: "none"`; a missing codec is unknown and,
+/// as in yt-dlp's own `hasvid` sort field, still counts as video.
+#[derive(Deserialize)]
+struct RawStream {
+    vcodec: Option<String>,
+    height: Option<f64>,
+}
+
+impl RawStream {
+    fn video_height(&self) -> Option<u32> {
+        let has_video = self.vcodec.as_deref() != Some("none");
+        self.height.filter(|h| has_video && *h >= 1.0).map(|h| h as u32)
+    }
 }
 
 #[derive(Deserialize)]
@@ -57,6 +74,7 @@ struct RawMetadata {
     language: Option<String>,
     subtitles: Option<RawTracks>,
     automatic_captions: Option<RawTracks>,
+    formats: Option<Vec<RawStream>>,
 }
 
 pub fn parse_metadata(json: &str, requested_url: &str) -> AppResult<VideoMetadata> {
@@ -78,7 +96,13 @@ pub fn parse_metadata(json: &str, requested_url: &str) -> AppResult<VideoMetadat
         thumbnail: raw.thumbnail,
         duration: raw.duration,
         subtitles,
+        heights: video_heights(raw.formats.as_deref().unwrap_or_default()),
     })
+}
+
+fn video_heights(streams: &[RawStream]) -> Vec<u32> {
+    let heights: BTreeSet<u32> = streams.iter().filter_map(RawStream::video_height).collect();
+    heights.into_iter().rev().collect()
 }
 
 fn manual_tracks(tracks: Option<&RawTracks>) -> Vec<SubtitleTrack> {
