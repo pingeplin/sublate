@@ -54,6 +54,9 @@ public struct SettingsView: View {
                     }
                     .disabled(model.isUpdating)
                 }
+                if model.ytdlpStatus != .idle {
+                    StatusLine(status: model.ytdlpStatus, isBusy: false)
+                }
             } header: {
                 Text("yt-dlp")
             } footer: {

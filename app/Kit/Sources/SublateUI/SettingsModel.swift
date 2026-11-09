@@ -31,6 +31,7 @@ public final class SettingsModel {
     private(set) var antProfile: String?
     private(set) var ytdlp = YtdlpState.checking
     private(set) var isUpdating = false
+    private(set) var ytdlpStatus = Status.idle
     private(set) var status = Status.idle
 
     private let backend: any SettingsBackend
@@ -97,6 +98,7 @@ public final class SettingsModel {
         await applying {
             try await backend.clearData()
             ytdlp = .missing
+            ytdlpStatus = .idle
         }
     }
 
@@ -137,9 +139,9 @@ public final class SettingsModel {
         do {
             ytdlp = YtdlpState(version: try await backend.ytdlpVersion())
             ytdlp = YtdlpState(version: try await backend.updateYtdlp(force: force))
-            if force { status = .info("yt-dlp is up to date.") }
+            if force { ytdlpStatus = .info("yt-dlp is up to date.") }
         } catch {
-            if force || ytdlp == .checking { status = .failure(error.userMessage) }
+            if force || ytdlp == .checking { ytdlpStatus = .failure(error.userMessage) }
         }
     }
 }

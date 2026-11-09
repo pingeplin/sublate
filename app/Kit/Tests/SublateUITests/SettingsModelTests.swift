@@ -60,7 +60,7 @@ struct SettingsModelTests {
         #expect(backend.updateRequests == [false])
         #expect(model.ytdlp == .installed(version: "2026.09.02"))
         #expect(!model.isUpdating)
-        #expect(model.status == .idle)
+        #expect(model.ytdlpStatus == .idle)
     }
 
     @Test func startWithoutYtdlpLeavesTheDownloadToTheUser() async {
@@ -69,7 +69,7 @@ struct SettingsModelTests {
         await model.start()
 
         #expect(model.ytdlp == .missing)
-        #expect(model.status == .idle)
+        #expect(model.ytdlpStatus == .idle)
     }
 
     @Test func downloadingInstallsTheLatestYtdlp() async {
@@ -80,7 +80,7 @@ struct SettingsModelTests {
 
         #expect(backend.updateRequests == [false, true])
         #expect(model.ytdlp == .installed(version: "2026.09.02"))
-        #expect(model.status == .info("yt-dlp is up to date."))
+        #expect(model.ytdlpStatus == .info("yt-dlp is up to date."))
     }
 
     @Test func aFailedDownloadIsReportedAndYtdlpStaysMissing() async {
@@ -90,7 +90,7 @@ struct SettingsModelTests {
         await model.installLatestYtdlp()
 
         #expect(model.ytdlp == .missing)
-        #expect(model.status == .failure("yt-dlp update failed: offline"))
+        #expect(model.ytdlpStatus == .failure("yt-dlp update failed: offline"))
     }
 
     @Test func aFailedRoutineUpdateKeepsTheInstalledVersionQuietly() async {
@@ -99,7 +99,7 @@ struct SettingsModelTests {
         await model.start()
 
         #expect(model.ytdlp == .installed(version: "2026.08.19"))
-        #expect(model.status == .idle)
+        #expect(model.ytdlpStatus == .idle)
     }
 
     @Test func anUnusableInstallationIsReportedAtStart() async {
@@ -108,7 +108,7 @@ struct SettingsModelTests {
         await model.start()
 
         #expect(model.ytdlp == .checking)
-        #expect(model.status == .failure("the app's bundled tools are unusable: deno is missing"))
+        #expect(model.ytdlpStatus == .failure("the app's bundled tools are unusable: deno is missing"))
     }
 
     @Test func checkingForUpdatesForcesTheCheckAndReportsBack() async {
@@ -116,7 +116,7 @@ struct SettingsModelTests {
 
         #expect(backend.updateRequests == [true])
         #expect(model.ytdlp == .installed(version: "2026.09.02"))
-        #expect(model.status == .info("yt-dlp is up to date."))
+        #expect(model.ytdlpStatus == .info("yt-dlp is up to date."))
     }
 
     @Test func aFailedRequestedUpdateIsReported() async {
@@ -125,7 +125,7 @@ struct SettingsModelTests {
         await model.installLatestYtdlp()
 
         #expect(model.ytdlp == .installed(version: "2026.08.19"))
-        #expect(model.status == .failure("yt-dlp update failed: offline"))
+        #expect(model.ytdlpStatus == .failure("yt-dlp update failed: offline"))
     }
 
     @Test func clearingDataLeavesYtdlpToBeDownloadedAgainAndKeepsTheKey() async {
@@ -149,6 +149,22 @@ struct SettingsModelTests {
 
         #expect(model.ytdlp == .installed(version: "2026.09.02"))
         #expect(model.status == .failure("I/O error: permission denied"))
+    }
+
+    @Test func clearingDataDropsTheLastYtdlpReport() async {
+        await model.installLatestYtdlp()
+
+        await model.clearData()
+
+        #expect(model.ytdlpStatus == .idle)
+    }
+
+    @Test func aKeyFailureIsNotReportedUnderYtdlp() async {
+        keyStore.failure = KeychainError(status: errSecAuthFailed)
+
+        await model.start()
+
+        #expect(model.ytdlpStatus == .idle)
     }
 
     @Test func savingStoresTheTrimmedKeyAndClearsTheField() async {
