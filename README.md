@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/icon.svg" width="128" height="128" alt="Sublate app icon"></p>
+<p align="center"><img src="docs/icon.png" width="128" height="128" alt="Sublate app icon"></p>
 
 # Sublate
 
@@ -53,7 +53,7 @@ Developers can skip the saved key: without one, the app falls back to `ANTHROPIC
 | `core/` | Rust crate: yt-dlp and its updater, subtitle parsing, Claude translation. `src/ffi.rs` is the only surface the UI sees, exported through [UniFFI](https://mozilla.github.io/uniffi-rs/). |
 | `app/Kit/` | Swift package: `SublateCore` (generated bindings over the static library) and `SublateUI` (view model and SwiftUI views). |
 | `app/Sublate/` | The app shell; `app/project.yml` is the XcodeGen spec. |
-| `docs/icon.svg` | Source of the app icon; `app/Sublate/Resources/AppIcon.icns` is rendered from it at 16–1024 px. |
+| `app/Sublate/Resources/AppIcon.icon` | The app icon, an [Icon Composer](https://developer.apple.com/icon-composer/) document that Xcode compiles for every size and appearance; `make icon` renders `docs/icon.png` from it for this README. |
 | `vendor/` | Pinned third-party tools (`ffmpeg`, `deno`): `fetch.sh` downloads, verifies and signs them into `vendor/tools`, which the app bundles as `Contents/Resources/tools`. |
 | `scripts/package.sh` | Builds, signs and optionally notarizes the disk image; `dmg.settings.py` is its drag-to-Applications window layout. |
 

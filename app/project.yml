@@ -29,7 +29,6 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_FILE: Sublate/Info.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         INFOPLIST_KEY_NSHumanReadableCopyright: Copyright © 2026 YingPing Lin. Licensed under GPL-3.0-or-later.
         # Not sandboxed: the backend runs the bundled tools and writes wherever the user chooses.

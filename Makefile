@@ -17,6 +17,9 @@ DERIVED := app/build
 APP := $(DERIVED)/Build/Products/Release/Sublate.app
 TOOLS := vendor/tools
 TOOLS_READY := $(TOOLS)/deno
+ICON := app/Sublate/Resources/AppIcon.icon
+ICON_PREVIEW := docs/icon.png
+ICTOOL := $(shell xcode-select -p)/../Applications/Icon Composer.app/Contents/Executables/ictool
 VERSION := $(shell awk '$$1 == "MARKETING_VERSION:" { print $$2 }' app/project.yml)
 DMG := dist/Sublate-$(VERSION).dmg
 
@@ -26,7 +29,7 @@ BINDGEN := cd core && cargo run --quiet --features cli --bin uniffi-bindgen-swif
 
 RUST_SOURCES := $(shell find core/src -name '*.rs') core/Cargo.toml core/Cargo.lock
 
-.PHONY: core tools project build run test dmg release clean
+.PHONY: core tools icon project build run test dmg release clean
 
 core: $(XCFRAMEWORK)
 
@@ -45,6 +48,13 @@ $(XCFRAMEWORK): $(RUST_SOURCES)
 	$(BINDGEN) ../$(STATIC_LIB) ../$(HEADERS) --headers --modulemap \
 		--module-name $(CRATE)FFI --modulemap-filename module.modulemap
 	xcodebuild -create-xcframework -library $(STATIC_LIB) -headers $(HEADERS) -output $(XCFRAMEWORK)
+
+# The README preview of the app icon, rendered as macOS 26 draws it.
+icon: $(ICON_PREVIEW)
+
+$(ICON_PREVIEW): $(ICON)/icon.json $(wildcard $(ICON)/Assets/*)
+	"$(ICTOOL)" $(ICON) --export-image --output-file $@ --platform macOS --rendition Default \
+		--width 256 --height 256 --scale 1 --design-generation 26
 
 project: core tools
 	cd app && xcodegen generate
