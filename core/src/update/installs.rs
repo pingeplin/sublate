@@ -7,7 +7,7 @@ use crate::error::{AppError, AppResult};
 
 /// Executable at the top of yt-dlp's macOS onedir build; `_internal/` sits next to it.
 pub const PROGRAM: &str = "yt-dlp_macos";
-pub(super) const UNZIP: &str = "/usr/bin/ditto";
+const UNZIP: &str = "/usr/bin/ditto";
 const STAGING_PREFIX: &str = ".staging-";
 /// A fresh install is slow to start once, while macOS scans its libraries.
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(120);
@@ -201,15 +201,19 @@ pub(crate) mod test_support {
     pub fn fake_archive(dir: &Path, reports: &str) -> PathBuf {
         let content = dir.join("content");
         fake_release(&content, reports);
-        let archive = dir.join("release.zip");
+        zip_folder(&content, &dir.join("release.zip"))
+    }
+
+    /// Zips what `content` holds, as the release archives do.
+    pub fn zip_folder(content: &Path, archive: &Path) -> PathBuf {
         let status = std::process::Command::new(super::UNZIP)
             .args(["-c", "-k"])
-            .arg(&content)
-            .arg(&archive)
+            .arg(content)
+            .arg(archive)
             .status()
             .unwrap();
         assert!(status.success());
-        archive
+        archive.to_path_buf()
     }
 }
 

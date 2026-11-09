@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 
 pub use active::ActiveRelease;
-pub use app::{newer_release, AppArchive, AppDownloader, AppRelease, AppReleaseFeed};
+pub use app::{archive_name, newer_release, parse_version, AppArchive, AppDownloader, AppRelease, AppReleaseFeed};
 pub use github::{GitHubAppReleases, GitHubReleases};
 pub use installs::{Install, Installs, Version, PROGRAM};
 
@@ -115,8 +115,7 @@ impl Updater {
 
     async fn fetch(&self, release: &Release, archive: &Path) -> AppResult<Install> {
         self.feed.download(release, archive).await?;
-        let digest = sha256_hex(archive).await?;
-        if !digest.eq_ignore_ascii_case(&release.sha256) {
+        if !matches_sha256(archive, &release.sha256).await? {
             return Err(AppError::Update(format!(
                 "release {} does not match its checksum",
                 release.version
@@ -134,7 +133,12 @@ impl Updater {
     }
 }
 
-pub(super) async fn sha256_hex(path: &Path) -> AppResult<String> {
+/// Whether the file at `path` has the hex digest `expected`, in either case.
+pub(super) async fn matches_sha256(path: &Path, expected: &str) -> AppResult<bool> {
+    Ok(sha256_hex(path).await?.eq_ignore_ascii_case(expected))
+}
+
+async fn sha256_hex(path: &Path) -> AppResult<String> {
     let mut file = tokio::fs::File::open(path).await?;
     let mut hasher = Sha256::new();
     let mut chunk = vec![0u8; 1 << 16];

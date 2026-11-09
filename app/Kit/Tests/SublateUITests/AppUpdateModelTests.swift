@@ -23,15 +23,21 @@ struct AppUpdateModelTests {
         await model.check()
     }
 
-    /// Lets the model apply what the backend just reported, then returns the state it reached.
-    private func settledState(after previous: AppUpdateState) async -> AppUpdateState {
-        for attempt in 0..<100 where attempt < 10 || model.state == previous {
-            await Task.yield()
+    /// Records the state the model reaches after each progress report. The model applies a
+    /// report on its own task, so each one gets a few turns, and more while the state is unchanged.
+    private func recordDownloadStates() -> () -> [AppUpdateState] {
+        var seen: [AppUpdateState] = []
+        backend.afterDownloadProgress = { [model] in
+            let previous = seen.last ?? .downloading(.sample, fraction: nil)
+            for turn in 0..<100 where turn < 10 || model.state == previous {
+                await Task.yield()
+            }
+            seen.append(model.state)
         }
-        return model.state
+        return { seen }
     }
 
-    private var stagedApp: URL { URL(filePath: "/cache/app-update/Sublate.app") }
+    private var stagedApp: URL { URL(filePath: try! backend.appDownload.get()) }
 
     // MARK: Checking
 
@@ -85,6 +91,15 @@ struct AppUpdateModelTests {
         await offer()
 
         #expect(model.canInstall)
+        #expect(model.offer == .install)
+    }
+
+    @Test func nothingIsOfferedBeforeACheckFindsAnUpdate() async {
+        #expect(model.offer == nil)
+
+        await model.check()
+
+        #expect(model.offer == nil)
     }
 
     @Test func aReleaseWithoutAnArchiveOffersOnlyItsPage() async {
@@ -93,7 +108,7 @@ struct AppUpdateModelTests {
         await model.install()
 
         #expect(!model.canInstall)
-        #expect(model.state.downloadPage == URL(string: AppUpdate.sample.pageUrl))
+        #expect(model.offer == .page(URL(string: AppUpdate.sample.pageUrl)!))
         #expect(backend.appDownloads.isEmpty)
         #expect(model.state == .available(.pageOnly))
     }
@@ -105,7 +120,7 @@ struct AppUpdateModelTests {
         await model.install()
 
         #expect(!model.canInstall)
-        #expect(model.state.downloadPage == URL(string: AppUpdate.sample.pageUrl))
+        #expect(model.offer == .page(URL(string: AppUpdate.sample.pageUrl)!))
         #expect(backend.appDownloads.isEmpty)
     }
 
@@ -136,15 +151,13 @@ struct AppUpdateModelTests {
 
     @Test func theDownloadShowsItsProgressBeforeTheInstall() async {
         await offer()
-        var seen: [AppUpdateState] = []
-        backend.afterDownloadProgress = {
-            seen.append(await settledState(after: seen.last ?? .downloading(.sample, fraction: nil)))
-        }
-        installer.duringInstall = { seen.append(model.state) }
+        let seen = recordDownloadStates()
+        var duringInstall: AppUpdateState?
+        installer.duringInstall = { duringInstall = model.state }
 
         await model.install()
 
-        #expect(seen == [
+        #expect(seen() + [duringInstall] == [
             .downloading(.sample, fraction: 0.5),
             .downloading(.sample, fraction: 1.0),
             .installing(.sample),
@@ -165,14 +178,11 @@ struct AppUpdateModelTests {
     @Test func aDownloadOfUnknownSizeIsIndeterminateAndStillInstalls() async {
         await offer()
         backend.downloadProgress = [(50, 100), (60, nil), (70, 0)]
-        var seen: [AppUpdateState] = []
-        backend.afterDownloadProgress = {
-            seen.append(await settledState(after: seen.last ?? .downloading(.sample, fraction: nil)))
-        }
+        let seen = recordDownloadStates()
 
         await model.install()
 
-        #expect(seen == [
+        #expect(seen() == [
             .downloading(.sample, fraction: 0.5),
             .downloading(.sample, fraction: nil),
             .downloading(.sample, fraction: nil),
@@ -239,6 +249,7 @@ struct AppUpdateModelTests {
 
         #expect(model.isBlockedByJob)
         #expect(model.canInstall)
+        #expect(model.isWaitingForJob)
         #expect(model.state == .available(.sample))
         #expect(backend.appDownloads.isEmpty)
         #expect(installer.calls.isEmpty)
@@ -250,6 +261,14 @@ struct AppUpdateModelTests {
         #expect(installer.calls.last == .relaunch(running))
     }
 
+    @Test func aRunningJobDoesNotHoldBackAPageLink() async {
+        await offer(.pageOnly)
+        activity.isBusy = true
+
+        #expect(model.offer == .page(URL(string: AppUpdate.sample.pageUrl)!))
+        #expect(!model.isWaitingForJob)
+    }
+
     @Test func aJobThatStartsDuringTheInstallDelaysTheRelaunch() async {
         await offer()
         installer.duringInstall = { activity.isBusy = true }
@@ -257,6 +276,8 @@ struct AppUpdateModelTests {
         await model.install()
 
         #expect(model.state == .readyToRelaunch(.sample))
+        #expect(model.offer == .relaunch)
+        #expect(model.isWaitingForJob)
         #expect(!installer.calls.contains(.relaunch(running)))
 
         model.relaunch()
@@ -274,6 +295,7 @@ struct AppUpdateModelTests {
 
         await model.check()
 
+        #expect(!model.canCheck)
         #expect(backend.updateChecks.count == 1)
         #expect(model.state == .readyToRelaunch(.sample))
     }

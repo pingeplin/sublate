@@ -7,7 +7,7 @@ use crate::languages::{Language, TARGET_LANGUAGES};
 use crate::metadata::{SubtitleTrack, VideoMetadata};
 use crate::services::{AppState, Locations};
 use crate::subtitle_job::SubtitleOutput;
-use crate::update::{AppRelease, Version};
+use crate::update::{archive_name, parse_version, AppArchive, AppRelease, Version};
 
 /// Flattened to its message, so the UI handles one case whatever the cause.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -90,6 +90,17 @@ pub struct AppUpdate {
     pub version: String,
     pub page_url: String,
     pub archive_sha256: Option<String>,
+}
+
+impl AppUpdate {
+    /// What a download needs, checked once here: the record comes back from the app.
+    fn installable(&self) -> Result<(Version, AppArchive), AppError> {
+        let version = parse_version(&self.version).map_err(AppError::AppInstall)?;
+        let sha256 = self.archive_sha256.clone().ok_or_else(|| {
+            AppError::AppInstall(format!("release {version} has no {}", archive_name(&version)))
+        })?;
+        Ok((version, AppArchive { sha256 }))
+    }
 }
 
 impl From<AppRelease> for AppUpdate {
@@ -182,11 +193,10 @@ impl Backend {
         update: AppUpdate,
         listener: Arc<dyn AppDownloadListener>,
     ) -> BackendResult<String> {
+        let (version, archive) = update.installable()?;
         let bundle = self
             .state
-            .download_app_update(&update.version, update.archive_sha256.as_deref(), |done, total| {
-                listener.on_download_progress(done, total)
-            })
+            .download_app_update(&version, &archive, |done, total| listener.on_download_progress(done, total))
             .await?;
         Ok(path_string(&bundle))
     }
@@ -250,7 +260,6 @@ mod tests {
 
     use super::*;
     use crate::metadata::TrackKind;
-    use crate::update::AppArchive;
 
     struct Silent;
 
@@ -380,6 +389,32 @@ mod tests {
 
         assert_eq!(with_archive, update(Some("ab12".into())));
         assert_eq!(page_only, update(None));
+    }
+
+    struct CountedDownload(std::sync::atomic::AtomicUsize);
+
+    impl AppDownloadListener for CountedDownload {
+        fn on_download_progress(&self, _done: u64, _total: Option<u64>) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_download_without_an_archive_or_a_version_fails_before_anything_is_fetched() {
+        let update = |version: &str, archive_sha256: Option<&str>| AppUpdate {
+            version: version.into(),
+            page_url: "https://example.com".into(),
+            archive_sha256: archive_sha256.map(Into::into),
+        };
+        let listener = Arc::new(CountedDownload(Default::default()));
+
+        let no_archive = backend().download_app_update(update("0.4.0", None), listener.clone()).await;
+        let bad_version = backend().download_app_update(update("../evil", Some("ab12")), listener.clone()).await;
+
+        let message = |result: BackendResult<String>| result.unwrap_err().to_string();
+        assert_eq!(message(no_archive), "Sublate update failed: release 0.4.0 has no Sublate-0.4.0.zip");
+        assert_eq!(message(bad_version), "Sublate update failed: '../evil' is not a Sublate version");
+        assert_eq!(listener.0.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
     #[test]

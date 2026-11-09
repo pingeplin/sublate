@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 
 use super::installs::unpack;
-use super::{sha256_hex, Version};
+use super::{matches_sha256, Version};
 use crate::disk;
 use crate::error::{AppError, AppResult};
 
@@ -51,7 +52,7 @@ pub async fn newer_release(feed: &dyn AppReleaseFeed, current: &str) -> AppResul
 }
 
 /// App versions are digits and dots, like the `MARKETING_VERSION` they come from.
-fn parse_version(text: &str) -> Result<Version, String> {
+pub fn parse_version(text: &str) -> Result<Version, String> {
     Version::parse(text).ok_or_else(|| format!("'{}' is not a Sublate version", text.trim()))
 }
 
@@ -71,31 +72,22 @@ impl AppDownloader {
     /// earlier attempt left there is removed first; after a failure the folder is empty.
     pub async fn download(
         &self,
-        version: &str,
-        sha256: Option<&str>,
+        version: &Version,
+        archive: &AppArchive,
         on_progress: DownloadProgress<'_>,
     ) -> AppResult<PathBuf> {
-        let version = parse_version(version).map_err(AppError::AppInstall)?;
-        let sha256 = sha256.ok_or_else(|| {
-            AppError::AppInstall(format!("release {version} has no {}", archive_name(&version)))
-        })?;
-        let staged = self.restage(&version, sha256, on_progress).await;
+        let staged = self.stage(version, &archive.sha256, &throttled(on_progress)).await;
         if staged.is_err() {
-            self.empty_staging().await;
+            let _ = self.reset_staging().await;
         }
         staged.map_err(as_install_failure)
     }
 
-    async fn restage(&self, version: &Version, sha256: &str, on_progress: DownloadProgress<'_>) -> AppResult<PathBuf> {
-        disk::delete(&self.staging).await?;
-        tokio::fs::create_dir_all(&self.staging).await?;
-        self.stage(version, sha256, on_progress).await
-    }
-
     async fn stage(&self, version: &Version, sha256: &str, on_progress: DownloadProgress<'_>) -> AppResult<PathBuf> {
+        self.reset_staging().await?;
         let archive = self.staging.join(archive_name(version));
         self.feed.download(version, &archive, on_progress).await?;
-        if !sha256_hex(&archive).await?.eq_ignore_ascii_case(sha256) {
+        if !matches_sha256(&archive, sha256).await? {
             return Err(AppError::AppInstall(format!("release {version} does not match its checksum")));
         }
         let unpacked = self.staging.join(UNPACKED);
@@ -108,10 +100,23 @@ impl AppDownloader {
         Ok(staged)
     }
 
-    async fn empty_staging(&self) {
-        let Ok(entries) = std::fs::read_dir(&self.staging) else { return };
-        for entry in entries.flatten() {
-            let _ = disk::delete(&entry.path()).await;
+    async fn reset_staging(&self) -> AppResult<()> {
+        disk::delete(&self.staging).await?;
+        Ok(tokio::fs::create_dir_all(&self.staging).await?)
+    }
+}
+
+/// Passes a report on only when the whole percent changes, or, while the size is unknown, each
+/// MiB: the network delivers many small chunks, and the user only sees a percent.
+fn throttled(on_progress: DownloadProgress<'_>) -> impl Fn(u64, Option<u64>) + Send + Sync + '_ {
+    let last = AtomicU64::new(u64::MAX);
+    move |done, total| {
+        let step = match total {
+            Some(total) if total > 0 => done * 100 / total,
+            _ => done >> 20,
+        };
+        if last.swap(step, Ordering::Relaxed) != step {
+            on_progress(done, total);
         }
     }
 }
@@ -145,7 +150,8 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
-    use super::super::installs::UNZIP;
+    use super::super::installs::test_support::zip_folder;
+    use super::super::sha256_hex;
     use super::*;
 
     struct Offering {
@@ -258,15 +264,7 @@ mod tests {
             let content = self.dir.path().join("content");
             std::fs::create_dir_all(&content).unwrap();
             fill(&content);
-            let archive = self.dir.path().join("served.zip");
-            let status = std::process::Command::new(UNZIP)
-                .args(["-c", "-k"])
-                .arg(&content)
-                .arg(&archive)
-                .status()
-                .unwrap();
-            assert!(status.success());
-            archive
+            zip_folder(&content, &self.dir.path().join("served.zip"))
         }
 
         fn app_archive(&self) -> PathBuf {
@@ -306,6 +304,14 @@ mod tests {
 
     fn silent(_: u64, _: Option<u64>) {}
 
+    fn v040() -> Version {
+        Version::parse("0.4.0").unwrap()
+    }
+
+    fn archive_of(sha256: &str) -> AppArchive {
+        AppArchive { sha256: sha256.into() }
+    }
+
     #[tokio::test]
     async fn a_matching_archive_is_unpacked_to_the_staged_bundle_and_the_zip_is_removed() {
         let fixture = Fixture::new();
@@ -315,7 +321,7 @@ mod tests {
         let reports = Mutex::new(Vec::new());
 
         let staged = downloader
-            .download("0.4.0", Some(&sha), &|done, total| reports.lock().unwrap().push((done, total)))
+            .download(&v040(), &archive_of(&sha), &|done, total| reports.lock().unwrap().push((done, total)))
             .await
             .unwrap();
 
@@ -339,7 +345,7 @@ mod tests {
         std::fs::create_dir_all(fixture.staging.join(".unpacked/Other.app")).unwrap();
         let (downloader, _) = fixture.downloader(Some(archive));
 
-        let staged = downloader.download("0.4.0", Some(&sha), &silent).await.unwrap();
+        let staged = downloader.download(&v040(), &archive_of(&sha), &silent).await.unwrap();
 
         assert_eq!(fixture.staged_entries(), ["Sublate.app"]);
         assert_eq!(std::fs::read_to_string(staged.join("Contents/MacOS/Sublate")).unwrap(), "new");
@@ -350,7 +356,7 @@ mod tests {
         let fixture = Fixture::new();
         let (downloader, _) = fixture.downloader(Some(fixture.app_archive()));
 
-        let err = downloader.download("0.4.0", Some(&"00".repeat(32)), &silent).await.unwrap_err();
+        let err = downloader.download(&v040(), &archive_of(&"00".repeat(32)), &silent).await.unwrap_err();
 
         assert_eq!(err.to_string(), "Sublate update failed: release 0.4.0 does not match its checksum");
         assert!(fixture.staging.is_dir());
@@ -359,7 +365,8 @@ mod tests {
 
     #[tokio::test]
     async fn an_archive_that_does_not_hold_the_bundle_alone_is_rejected() {
-        let layouts: [(&str, fn(&Path)); 4] = [
+        type Layout = (&'static str, fn(&Path));
+        let layouts: [Layout; 4] = [
             ("another app", |top| fake_bundle(&top.join("Other.app"), "x")),
             ("an extra item", |top| {
                 fake_bundle(&top.join(APP_BUNDLE), "x");
@@ -378,7 +385,7 @@ mod tests {
             let sha = sha_of(&archive).await;
             let (downloader, _) = fixture.downloader(Some(archive));
 
-            let err = downloader.download("0.4.0", Some(&sha), &silent).await.unwrap_err();
+            let err = downloader.download(&v040(), &archive_of(&sha), &silent).await.unwrap_err();
 
             assert_eq!(
                 err.to_string(),
@@ -390,27 +397,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_release_without_an_archive_or_a_bad_version_is_refused_before_downloading() {
-        let fixture = Fixture::new();
-        let (downloader, requested) = fixture.downloader(Some(fixture.app_archive()));
-
-        let no_archive = downloader.download("0.4.0", None, &silent).await.unwrap_err();
-        let bad_version = downloader.download("../evil", Some("abcd"), &silent).await.unwrap_err();
-
-        assert_eq!(no_archive.to_string(), "Sublate update failed: release 0.4.0 has no Sublate-0.4.0.zip");
-        assert_eq!(bad_version.to_string(), "Sublate update failed: '../evil' is not a Sublate version");
-        assert!(requested.lock().unwrap().is_empty());
-    }
-
-    #[tokio::test]
     async fn a_failed_download_leaves_the_staging_folder_empty() {
         let fixture = Fixture::new();
         let (downloader, _) = fixture.downloader(None);
 
-        let err = downloader.download("0.4.0", Some(&"00".repeat(32)), &silent).await.unwrap_err();
+        let err = downloader.download(&v040(), &archive_of(&"00".repeat(32)), &silent).await.unwrap_err();
 
         assert_eq!(err.to_string(), "Sublate update failed: I/O error: connection reset");
         assert!(fixture.staging.is_dir());
         assert_eq!(fixture.staged_entries(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn progress_is_passed_on_once_per_percent_or_per_mib_while_the_size_is_unknown() {
+        let reports = Mutex::new(Vec::new());
+        let record = |done, total| reports.lock().unwrap().push((done, total));
+        let throttle = throttled(&record);
+
+        for done in 0..=1000 {
+            throttle(done, Some(1000));
+        }
+        let known = std::mem::take(&mut *reports.lock().unwrap());
+        for chunk in 1..=8 {
+            throttle(chunk << 19, None);
+        }
+        let unknown = std::mem::take(&mut *reports.lock().unwrap());
+
+        assert_eq!(known.len(), 101);
+        assert_eq!(known.first(), Some(&(0, Some(1000))));
+        assert_eq!(known.last(), Some(&(1000, Some(1000))));
+        assert_eq!(unknown, [(1 << 19, None), (2 << 19, None), (4 << 19, None), (6 << 19, None), (8 << 19, None)]);
     }
 }

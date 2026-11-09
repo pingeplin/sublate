@@ -14,8 +14,8 @@ use crate::toolchain::Toolchain;
 use crate::translate::claude::ClaudeTranslator;
 use crate::translate::Translator;
 use crate::update::{
-    newer_release, ActiveRelease, AppDownloader, AppRelease, GitHubAppReleases, GitHubReleases, Installs, Updater,
-    Version,
+    newer_release, ActiveRelease, AppArchive, AppDownloader, AppRelease, GitHubAppReleases, GitHubReleases, Installs,
+    Updater, Version,
 };
 use crate::ytdlp::YtDlp;
 
@@ -98,16 +98,16 @@ impl AppState {
         newer_release(&GitHubAppReleases::new()?, current).await
     }
 
-    /// Downloads the archive of Sublate `version`, checks it against `sha256` and unpacks it.
-    /// Returns the unpacked app bundle; like the check, it needs none of the services.
+    /// Downloads the archive of Sublate `version`, checks it and unpacks it. Returns the
+    /// unpacked app bundle; like the check, it needs none of the services.
     pub async fn download_app_update(
         &self,
-        version: &str,
-        sha256: Option<&str>,
+        version: &Version,
+        archive: &AppArchive,
         on_progress: impl Fn(u64, Option<u64>) + Send + Sync,
     ) -> AppResult<PathBuf> {
         let downloader = AppDownloader::new(Box::new(GitHubAppReleases::new()?), self.app_staging());
-        downloader.download(version, sha256, &on_progress).await
+        downloader.download(version, archive, &on_progress).await
     }
 
     fn app_staging(&self) -> PathBuf {

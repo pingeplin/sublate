@@ -17,13 +17,17 @@ enum AppInstallError: LocalizedError, Equatable {
     case notRestored(copy: URL, home: URL)
 
     var errorDescription: String? {
+        "Sublate update failed: " + reason
+    }
+
+    private var reason: String {
         switch self {
         case .untrusted(let reason):
-            "Sublate update failed: the downloaded app is not signed by Sublate's developer (\(reason))"
+            "the downloaded app is not signed by Sublate's developer (\(reason))"
         case .wrongVersion(let expected, let found):
-            "Sublate update failed: the downloaded app is version \(found ?? "unknown"), not \(expected)"
+            "the downloaded app is version \(found ?? "unknown"), not \(expected)"
         case .notRestored(let copy, let home):
-            "Sublate update failed, and the previous version could not be put back. It is at \(copy.filePath); move it to \(home.deletingLastPathComponent().filePath)."
+            "the previous version could not be put back. It is at \(copy.filePath); move it to \(home.deletingLastPathComponent().filePath)."
         }
     }
 }

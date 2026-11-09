@@ -10,32 +10,24 @@ struct BundleVerifierTests {
         temp = try TempFolder()
     }
 
-    private func isUntrusted(_ error: any Error) -> Bool {
-        if case .untrusted = error as? AppInstallError { true } else { false }
+    enum Untrusted: CaseIterable {
+        case unsigned, signedAdHoc, signedByAnotherParty
     }
 
-    @Test func anUnsignedBundleIsRejected() throws {
-        let bundle = try FakeBundle.make(at: temp.url.appending(path: "Sublate.app"), version: "0.2.0", marker: "x")
+    @Test(arguments: Untrusted.allCases)
+    func aBundleNotSignedBySublatesDeveloperIsRejected(_ kind: Untrusted) throws {
+        let bundle = switch kind {
+        case .unsigned: try FakeBundle.make(at: temp.url.appending(path: "Sublate.app"), version: "0.2.0", marker: "x")
+        case .signedAdHoc: try FakeBundle.makeAdHocSigned(at: temp.url.appending(path: "Sublate.app"), version: "0.2.0")
+        case .signedByAnotherParty: URL(filePath: "/System/Applications/Calculator.app")
+        }
 
         let error = #expect(throws: AppInstallError.self) { try DeveloperIDSignature().check(bundle) }
 
-        #expect(error.map(isUntrusted) == true)
-    }
-
-    @Test func aBundleSignedAdHocIsRejected() throws {
-        let bundle = try FakeBundle.makeAdHocSigned(at: temp.url.appending(path: "Sublate.app"), version: "0.2.0")
-
-        let error = #expect(throws: AppInstallError.self) { try DeveloperIDSignature().check(bundle) }
-
-        #expect(error.map(isUntrusted) == true)
-    }
-
-    @Test func anAppSignedByAnotherPartyIsRejected() {
-        let calculator = URL(filePath: "/System/Applications/Calculator.app")
-
-        let error = #expect(throws: AppInstallError.self) { try DeveloperIDSignature().check(calculator) }
-
-        #expect(error.map(isUntrusted) == true)
+        guard case .untrusted = error else {
+            Issue.record("\(String(describing: error)) is not a rejection of the signature")
+            return
+        }
     }
 
     @Test func aTrustedBundleOfAnotherVersionIsRejected() throws {

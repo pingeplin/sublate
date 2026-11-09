@@ -60,13 +60,7 @@ impl ReleaseFeed for GitHubReleases {
     }
 
     async fn download(&self, release: &Release, dest: &Path) -> AppResult<()> {
-        let mut response = self.get(&release.url).await?;
-        let mut file = tokio::fs::File::create(dest).await?;
-        while let Some(chunk) = response.chunk().await.map_err(failure)? {
-            file.write_all(&chunk).await?;
-        }
-        file.flush().await?;
-        Ok(())
+        save(self.get(&release.url).await?, dest, &|_, _| {}, failure).await
     }
 }
 
@@ -107,17 +101,35 @@ fn failure(error: reqwest::Error) -> AppError {
     AppError::Update(error.to_string())
 }
 
+/// Streams the body of `response` to `dest`; `failure` names the operation a network error ends.
+async fn save(
+    mut response: reqwest::Response,
+    dest: &Path,
+    on_progress: DownloadProgress<'_>,
+    failure: fn(reqwest::Error) -> AppError,
+) -> AppResult<()> {
+    let total = response.content_length();
+    let mut file = tokio::fs::File::create(dest).await?;
+    let mut done = 0;
+    while let Some(chunk) = response.chunk().await.map_err(failure)? {
+        file.write_all(&chunk).await?;
+        done += chunk.len() as u64;
+        on_progress(done, total);
+    }
+    file.flush().await?;
+    Ok(())
+}
+
 /// Sublate's own releases on GitHub. Drafts and prereleases are never the latest one.
+/// Checks are quick, so the client times out early; a download sets a longer limit of its own.
 pub struct GitHubAppReleases {
-    check: reqwest::Client,
-    download: reqwest::Client,
+    http: reqwest::Client,
 }
 
 impl GitHubAppReleases {
     pub fn new() -> AppResult<Self> {
         Ok(Self {
-            check: client(CHECK_TIMEOUT).map_err(check_failure)?,
-            download: client(DOWNLOAD_TIMEOUT).map_err(install_failure)?,
+            http: client(CHECK_TIMEOUT).map_err(check_failure)?,
         })
     }
 }
@@ -131,7 +143,7 @@ fn app_archive_url(version: &Version) -> String {
 #[async_trait]
 impl AppReleaseFeed for GitHubAppReleases {
     async fn latest(&self) -> AppResult<AppRelease> {
-        let response = self.check.get(APP_LATEST_URL).send().await.map_err(check_failure)?;
+        let response = self.http.get(APP_LATEST_URL).send().await.map_err(check_failure)?;
         // GitHub answers the same for a repository without releases and for one it cannot show.
         if response.status() == StatusCode::NOT_FOUND {
             return Err(AppError::AppUpdate("no published release was found".into()));
@@ -141,18 +153,9 @@ impl AppReleaseFeed for GitHubAppReleases {
     }
 
     async fn download(&self, version: &Version, dest: &Path, on_progress: DownloadProgress<'_>) -> AppResult<()> {
-        let response = self.download.get(app_archive_url(version)).send().await;
-        let mut response = response.and_then(|r| r.error_for_status()).map_err(install_failure)?;
-        let total = response.content_length();
-        let mut file = tokio::fs::File::create(dest).await?;
-        let mut done = 0;
-        while let Some(chunk) = response.chunk().await.map_err(install_failure)? {
-            file.write_all(&chunk).await?;
-            done += chunk.len() as u64;
-            on_progress(done, total);
-        }
-        file.flush().await?;
-        Ok(())
+        let request = self.http.get(app_archive_url(version)).timeout(DOWNLOAD_TIMEOUT);
+        let response = request.send().await.and_then(|r| r.error_for_status());
+        save(response.map_err(install_failure)?, dest, on_progress, install_failure).await
     }
 }
 

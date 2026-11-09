@@ -78,13 +78,6 @@ struct TestFileOperations: FileOperations {
     let root: URL
     var trashFails = false
     var failsToMove: @Sendable (_ source: URL, _ destination: URL) -> Bool = { _, _ in false }
-    private let system = SystemFileOperations()
-
-    init(root: URL, trashFails: Bool = false, failsToMove: @escaping @Sendable (URL, URL) -> Bool = { _, _ in false }) {
-        self.root = root
-        self.trashFails = trashFails
-        self.failsToMove = failsToMove
-    }
 
     var trashFolder: URL { root.appending(path: "Trash") }
     var workRoot: URL { root.appending(path: "work") }
@@ -97,21 +90,21 @@ struct TestFileOperations: FileOperations {
 
     func move(_ source: URL, to destination: URL) throws {
         if failsToMove(source, destination) { throw CocoaError(.fileWriteNoPermission) }
-        try system.move(source, to: destination)
+        try SystemFileOperations().move(source, to: destination)
     }
 
     func trash(_ url: URL) throws {
         if trashFails { throw CocoaError(.fileWriteNoPermission) }
         try FileManager.default.createDirectory(at: trashFolder, withIntermediateDirectories: true)
-        try system.move(url, to: trashFolder.appending(path: url.lastPathComponent))
+        try SystemFileOperations().move(url, to: trashFolder.appending(path: url.lastPathComponent))
     }
 
     func markModified(_ url: URL) throws {
-        try system.markModified(url)
+        try SystemFileOperations().markModified(url)
     }
 
     func remove(_ url: URL) throws {
-        try system.remove(url)
+        try SystemFileOperations().remove(url)
     }
 }
 

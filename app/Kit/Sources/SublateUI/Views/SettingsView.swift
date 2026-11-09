@@ -69,24 +69,27 @@ public struct SettingsView: View {
                     Button("Check for Updates") {
                         Task { await updates.check() }
                     }
-                    .disabled(updates.isBusy || updates.isAwaitingRelaunch)
+                    .disabled(!updates.canCheck)
                 }
                 if updates.state.status != .idle {
                     HStack {
                         StatusLine(status: updates.state.status, isBusy: false)
-                        if updates.canInstall {
+                        switch updates.offer {
+                        case .install:
                             Button("Install and Relaunch") {
                                 Task { await updates.install() }
                             }
                             .disabled(updates.isBlockedByJob)
-                        } else if updates.isAwaitingRelaunch {
+                        case .relaunch:
                             Button("Relaunch", action: updates.relaunch)
                                 .disabled(updates.isBlockedByJob)
-                        } else if let page = updates.state.downloadPage {
+                        case .page(let page):
                             Link("Download…", destination: page)
+                        case nil:
+                            EmptyView()
                         }
                     }
-                    if updates.isBlockedByJob && (updates.canInstall || updates.isAwaitingRelaunch) {
+                    if updates.isWaitingForJob {
                         Text("Finish the current download or translation first.")
                             .foregroundStyle(.secondary)
                     }
