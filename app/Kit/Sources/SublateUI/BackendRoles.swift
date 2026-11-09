@@ -29,9 +29,11 @@ protocol SettingsBackend: Sendable {
     func clearData() async throws
 }
 
-/// What the check for a newer Sublate asks of the backend.
+/// What the check for a newer Sublate, and its download, ask of the backend.
 protocol AppUpdateBackend: Sendable {
     func checkAppUpdate(currentVersion: String) async throws -> AppUpdate?
+    /// Returns the path of the unpacked Sublate.app, checked against the update's digest.
+    func downloadAppUpdate(update: AppUpdate, listener: AppDownloadListener) async throws -> String
 }
 
 extension Backend: ContentBackend, SettingsBackend, AppUpdateBackend {}

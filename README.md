@@ -10,7 +10,7 @@ Translation uses your own Anthropic API key: paste it in **Settings (⌘,)**, wh
 
 Sites change faster than the app ships, so `yt-dlp` is downloaded rather than bundled: **Settings → Download** fetches the latest official release, verifies its checksum, and installs it under `~/Library/Application Support/tech.radiw.sublate/`. After that the app looks for a newer release once a day, and **Settings → yt-dlp → Check for Updates** does the same on demand.
 
-The app itself is updated by hand. **Sublate → Check for Updates…** in the menu bar, or the same button under **Settings → Sublate**, asks GitHub for the latest release; when it is newer, **Download…** opens its page. Download the disk image and drag **Sublate** to Applications again, replacing the old copy. The API key, the downloaded `yt-dlp` and the caches stay.
+**Sublate → Check for Updates…** in the menu bar, or the same button under **Settings → Sublate**, asks GitHub for the latest release. When it is newer, **Install and Relaunch** downloads it, checks its checksum and that it is signed by the same developer, puts it in place of the running copy (which goes to the Trash), and opens the new version. The button waits while a download or translation runs. When the app cannot replace itself — it runs from the disk image, its folder is not writable for you, or the release has no archive — **Download…** opens the release page instead: download the disk image and drag **Sublate** to Applications again. The API key, the downloaded `yt-dlp` and the caches stay either way.
 
 Moving the app to the Trash leaves that copy and the caches behind; **Settings → Clear Data** deletes them first. The API key has its own **Remove** button.
 
@@ -21,7 +21,7 @@ Requirements: macOS 26, Xcode 27, Rust, [XcodeGen](https://github.com/yonaskolb/
 ```sh
 make run       # downloads and signs the bundled tools, builds the Rust core and the app, then opens it
 make dmg       # signed disk image in dist/, for trying the installer on this Mac
-make release   # the same, notarized and stapled: the file to publish
+make release   # the same, notarized and stapled, plus the zip of the app: the files to publish
 ```
 
 `make release` needs notarization credentials stored once:
@@ -30,10 +30,10 @@ make release   # the same, notarized and stapled: the file to publish
 xcrun notarytool store-credentials sublate --apple-id <apple id> --team-id <team id>
 ```
 
-A release is published on GitHub under the tag `v<version>`, where the version is `MARKETING_VERSION` in `app/project.yml`. The app's update check reads the latest release and rejects a tag of any other form:
+A release is published on GitHub under the tag `v<version>`, where the version is `MARKETING_VERSION` in `app/project.yml`. The app's update check reads the latest release and rejects a tag of any other form. Publish both files: the app installs updates from `Sublate-<version>.zip`, verified against the sha256 digest GitHub records for it; without it, users get the release page. Keep the disk image read-only (`format` in `scripts/dmg.settings.py`): the app refuses to replace itself only because it cannot write there.
 
 ```sh
-gh release create v0.2.0 dist/Sublate-0.2.0.dmg
+gh release create v0.4.0 dist/Sublate-0.4.0.dmg dist/Sublate-0.4.0.zip
 ```
 
 `make project` alone produces `app/Sublate.xcodeproj` for working in Xcode; rerun `make core` after changing Rust code.
@@ -69,10 +69,10 @@ YouTube auto-captions scroll (each cue repeats the previous line); the translate
 ```sh
 make test                                                                         # offline: Rust core + Swift view models
 cargo test --manifest-path core/Cargo.toml --test live_test -- --ignored --nocapture  # hits YouTube, GitHub + Claude API
-LIVE=1 swift test --package-path app/Kit                                           # same through the Swift bridge, plus the Keychain
+LIVE=1 swift test --package-path app/Kit                                           # same through the Swift bridge, plus the Keychain and the update signature check
 ```
 
-The live tests run the vendored tools (`make tools`), the same binaries the app ships.
+The live tests run the vendored tools (`make tools`), the same binaries the app ships. The Swift live tests also need `make build` first: they check that the update signature check accepts that Developer ID build and rejects it for another team or bundle identifier.
 
 ## License
 

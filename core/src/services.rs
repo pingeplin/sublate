@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 
 use crate::auth::CredentialChain;
+use crate::disk;
 use crate::error::{AppError, AppResult};
 use crate::file_name::OutputLocation;
 use crate::languages::find_target;
@@ -13,12 +14,15 @@ use crate::toolchain::Toolchain;
 use crate::translate::claude::ClaudeTranslator;
 use crate::translate::Translator;
 use crate::update::{
-    newer_release, ActiveRelease, AppRelease, GitHubAppReleases, GitHubReleases, Installs, Updater, Version,
+    newer_release, ActiveRelease, AppDownloader, AppRelease, GitHubAppReleases, GitHubReleases, Installs, Updater,
+    Version,
 };
 use crate::ytdlp::YtDlp;
 
 const INSTALLS_DIR: &str = "yt-dlp";
 const UPDATE_MARKER: &str = "yt-dlp.last-check";
+/// Where a newer Sublate is unpacked before the app installs it.
+const APP_STAGING_DIR: &str = "app-update";
 
 /// Where the app keeps what it runs and what it writes.
 pub struct Locations {
@@ -94,12 +98,29 @@ impl AppState {
         newer_release(&GitHubAppReleases::new()?, current).await
     }
 
+    /// Downloads the archive of Sublate `version`, checks it against `sha256` and unpacks it.
+    /// Returns the unpacked app bundle; like the check, it needs none of the services.
+    pub async fn download_app_update(
+        &self,
+        version: &str,
+        sha256: Option<&str>,
+        on_progress: impl Fn(u64, Option<u64>) + Send + Sync,
+    ) -> AppResult<PathBuf> {
+        let downloader = AppDownloader::new(Box::new(GitHubAppReleases::new()?), self.app_staging());
+        downloader.download(version, sha256, &on_progress).await
+    }
+
+    fn app_staging(&self) -> PathBuf {
+        self.locations.cache.join(APP_STAGING_DIR)
+    }
+
     /// Deletes what the app wrote under the user's Library, the downloaded yt-dlp and the
     /// caches, leaving it as it was before its first launch.
     pub async fn clear_data(&self) -> AppResult<()> {
         let services = self.services().await?;
         services.updater.clear().await?;
         services.ytdlp.clear_cache().await?;
+        disk::delete(&self.app_staging()).await?;
         // Deleted only when empty: the system keeps files of its own beside the app's.
         for dir in [&self.locations.support, &self.locations.cache] {
             let _ = tokio::fs::remove_dir(dir).await;

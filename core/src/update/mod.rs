@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 
 pub use active::ActiveRelease;
-pub use app::{newer_release, AppRelease, AppReleaseFeed};
+pub use app::{newer_release, AppArchive, AppDownloader, AppRelease, AppReleaseFeed};
 pub use github::{GitHubAppReleases, GitHubReleases};
 pub use installs::{Install, Installs, Version, PROGRAM};
 
@@ -134,7 +134,7 @@ impl Updater {
     }
 }
 
-async fn sha256_hex(path: &Path) -> AppResult<String> {
+pub(super) async fn sha256_hex(path: &Path) -> AppResult<String> {
     let mut file = tokio::fs::File::open(path).await?;
     let mut hasher = Sha256::new();
     let mut chunk = vec![0u8; 1 << 16];

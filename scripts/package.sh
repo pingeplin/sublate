@@ -3,7 +3,8 @@
 # shortcut, ready to be dragged across. dmgbuild writes the window layout itself, so no
 # Finder scripting is involved.
 # With a notarytool keychain profile, the app and the image are notarized and stapled, so
-# Gatekeeper accepts them even on a Mac that is offline at first launch.
+# Gatekeeper accepts them even on a Mac that is offline at first launch. The stapled app is
+# also zipped beside the image, as <name>.zip: the archive the app installs updates from.
 #
 # usage: package.sh <app> <dmg> <signing identity> [notary profile]
 set -euo pipefail
@@ -15,6 +16,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 name="$(basename "$app" .app)"
 work="$(mktemp -d)"
 staged="$work/$name.app"
+archive="${dmg%.dmg}.zip"
 trap 'rm -rf "$work"' EXIT
 
 notarize() {
@@ -24,10 +26,12 @@ notarize() {
 mkdir -p "$(dirname "$dmg")"
 ditto "$app" "$staged"
 
+rm -f "$archive"
 if [[ -n "$profile" ]]; then
     ditto -c -k --keepParent "$staged" "$work/app.zip"
     notarize "$work/app.zip"
     xcrun stapler staple "$staged"
+    ditto -c -k --keepParent "$staged" "$archive"
 fi
 
 rm -f "$dmg"
@@ -41,3 +45,6 @@ if [[ -n "$profile" ]]; then
     spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
 fi
 echo "Packaged $dmg"
+if [[ -n "$profile" ]]; then
+    echo "Packaged $archive"
+fi

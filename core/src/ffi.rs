@@ -83,11 +83,13 @@ impl From<SubtitleOutput> for SubtitleFiles {
     }
 }
 
-/// A newer Sublate and the page it is downloaded from.
+/// A newer Sublate, the page it is downloaded from, and the digest of the archive the app can
+/// install it from; `None` when the release offers only its page.
 #[derive(Debug, PartialEq, Eq, uniffi::Record)]
 pub struct AppUpdate {
     pub version: String,
     pub page_url: String,
+    pub archive_sha256: Option<String>,
 }
 
 impl From<AppRelease> for AppUpdate {
@@ -95,6 +97,7 @@ impl From<AppRelease> for AppUpdate {
         Self {
             version: release.version.to_string(),
             page_url: release.page,
+            archive_sha256: release.archive.map(|archive| archive.sha256),
         }
     }
 }
@@ -103,6 +106,13 @@ impl From<AppRelease> for AppUpdate {
 #[uniffi::export(foreign)]
 pub trait VideoProgressListener: Send + Sync {
     fn on_video_progress(&self, percent: f32);
+}
+
+/// Called from the runtime thread, never the UI thread. `total` is `None` when the server does
+/// not tell the size.
+#[uniffi::export(foreign)]
+pub trait AppDownloadListener: Send + Sync {
+    fn on_download_progress(&self, done: u64, total: Option<u64>);
 }
 
 /// Called from the runtime thread, never the UI thread.
@@ -164,6 +174,23 @@ impl Backend {
         Ok(release.map(AppUpdate::from))
     }
 
+    /// Downloads the archive of `update`, checks its digest and unpacks it, and returns the
+    /// unpacked Sublate.app for the app to verify and install. Fails when the update has no
+    /// archive or its version is not a version, before anything is downloaded.
+    pub async fn download_app_update(
+        &self,
+        update: AppUpdate,
+        listener: Arc<dyn AppDownloadListener>,
+    ) -> BackendResult<String> {
+        let bundle = self
+            .state
+            .download_app_update(&update.version, update.archive_sha256.as_deref(), |done, total| {
+                listener.on_download_progress(done, total)
+            })
+            .await?;
+        Ok(path_string(&bundle))
+    }
+
     /// Deletes the downloaded yt-dlp and the caches; yt-dlp has to be downloaded again.
     pub async fn clear_data(&self) -> BackendResult<()> {
         Ok(self.state.clear_data().await?)
@@ -223,6 +250,7 @@ mod tests {
 
     use super::*;
     use crate::metadata::TrackKind;
+    use crate::update::AppArchive;
 
     struct Silent;
 
@@ -304,6 +332,7 @@ mod tests {
         std::fs::create_dir_all(&release).unwrap();
         std::fs::write(release.join(crate::update::PROGRAM), "").unwrap();
         std::fs::write(dir.path().join("support/yt-dlp.last-check"), "2026.08.19").unwrap();
+        std::fs::create_dir_all(dir.path().join("cache/app-update/Sublate.app")).unwrap();
         for cache in ["cache/yt-dlp", "cache/deno"] {
             std::fs::create_dir_all(dir.path().join(cache)).unwrap();
         }
@@ -334,18 +363,23 @@ mod tests {
     }
 
     #[test]
-    fn an_app_update_carries_its_version_and_page_as_strings() {
-        let update = AppUpdate::from(AppRelease {
+    fn an_app_update_carries_its_version_page_and_archive_digest_as_strings() {
+        let release = |archive| AppRelease {
             version: Version::parse("0.2.0").unwrap(),
             page: "https://example.com/v0.2.0".into(),
-        });
-        assert_eq!(
-            update,
-            AppUpdate {
-                version: "0.2.0".into(),
-                page_url: "https://example.com/v0.2.0".into(),
-            }
-        );
+            archive,
+        };
+        let update = |archive_sha256| AppUpdate {
+            version: "0.2.0".into(),
+            page_url: "https://example.com/v0.2.0".into(),
+            archive_sha256,
+        };
+
+        let with_archive = AppUpdate::from(release(Some(AppArchive { sha256: "ab12".into() })));
+        let page_only = AppUpdate::from(release(None));
+
+        assert_eq!(with_archive, update(Some("ab12".into())));
+        assert_eq!(page_only, update(None));
     }
 
     #[test]

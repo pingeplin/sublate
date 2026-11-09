@@ -7,7 +7,7 @@ use crate::error::{AppError, AppResult};
 
 /// Executable at the top of yt-dlp's macOS onedir build; `_internal/` sits next to it.
 pub const PROGRAM: &str = "yt-dlp_macos";
-const UNZIP: &str = "/usr/bin/ditto";
+pub(super) const UNZIP: &str = "/usr/bin/ditto";
 const STAGING_PREFIX: &str = ".staging-";
 /// A fresh install is slow to start once, while macOS scans its libraries.
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(120);
@@ -137,7 +137,7 @@ fn remove(path: &Path) {
 }
 
 async fn stage(archive: &Path, staging: &Path, version: &Version) -> AppResult<()> {
-    unpack(archive, staging).await?;
+    unpack(archive, staging).await.map_err(AppError::Update)?;
     let reported = reported_version(&staging.join(PROGRAM)).await?;
     if reported == *version {
         Ok(())
@@ -146,7 +146,8 @@ async fn stage(archive: &Path, staging: &Path, version: &Version) -> AppResult<(
     }
 }
 
-async fn unpack(archive: &Path, dest: &Path) -> AppResult<()> {
+/// Unpacks a zip archive; the error is a reason, for the caller to put in its own error.
+pub(super) async fn unpack(archive: &Path, dest: &Path) -> Result<(), String> {
     let output = tokio::process::Command::new(UNZIP)
         .args(["-x", "-k"])
         .arg(archive)
@@ -154,14 +155,11 @@ async fn unpack(archive: &Path, dest: &Path) -> AppResult<()> {
         .stdin(Stdio::null())
         .output()
         .await
-        .map_err(|e| AppError::Update(format!("cannot start {UNZIP}: {e}")))?;
+        .map_err(|e| format!("cannot start {UNZIP}: {e}"))?;
     if output.status.success() {
         Ok(())
     } else {
-        Err(AppError::Update(format!(
-            "cannot unpack the release: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )))
+        Err(format!("cannot unpack the release: {}", String::from_utf8_lossy(&output.stderr).trim()))
     }
 }
 

@@ -22,7 +22,13 @@ public struct AppModels {
             keyStore: KeychainAPIKeyStore(service: identifier),
             profileStore: DefaultsAntProfileStore(defaults: .standard)
         )
-        updates = AppUpdateModel(backend: backend, currentVersion: bundle.marketingVersion)
+        updates = AppUpdateModel(
+            backend: backend,
+            installer: LiveAppInstaller(),
+            activity: content,
+            currentVersion: bundle.marketingVersion,
+            runningApp: bundle.bundleURL
+        )
     }
 }
 

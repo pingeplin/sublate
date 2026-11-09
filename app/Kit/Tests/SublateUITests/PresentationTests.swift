@@ -54,6 +54,31 @@ struct PresentationTests {
         #expect(AppUpdateState.failed("offline").downloadPage == nil)
     }
 
+    @Test func anInstallInProgressNamesTheVersionAndOffersNoPage() {
+        let states: [AppUpdateState] = [
+            .downloading(.sample, fraction: nil),
+            .downloading(.sample, fraction: 0.5),
+            .installing(.sample),
+            .readyToRelaunch(.sample),
+        ]
+        for state in states {
+            guard case .info(let text) = state.status else {
+                Issue.record("\(state) shows \(state.status)")
+                continue
+            }
+            #expect(text.contains("0.2.0"), "\(state)")
+            #expect(state.downloadPage == nil, "\(state)")
+        }
+        #expect(AppUpdateState.downloading(.sample, fraction: 0.5).status == .info("Downloading version 0.2.0… 50%"))
+    }
+
+    @Test func aFailedInstallShowsItsMessageAndFallsBackToThePage() {
+        let state = AppUpdateState.installFailed(.sample, "Sublate update failed: offline")
+
+        #expect(state.status == .failure("Sublate update failed: offline"))
+        #expect(state.downloadPage == URL(string: AppUpdate.sample.pageUrl))
+    }
+
     @Test func backendErrorsShowTheirOwnMessage() {
         let error: any Error = BackendError.Failed(message: "yt-dlp failed: boom")
         #expect(error.userMessage == "yt-dlp failed: boom")

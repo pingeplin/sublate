@@ -28,6 +28,8 @@ pub enum AppError {
     Update(String),
     #[error("Sublate update check failed: {0}")]
     AppUpdate(String),
+    #[error("Sublate update failed: {0}")]
+    AppInstall(String),
 }
 
 impl AppError {

@@ -60,7 +60,8 @@ build: project
 dmg: build
 	scripts/package.sh "$(APP)" "$(DMG)" "$(SIGN_IDENTITY)"
 
-# The disk image to publish: app and image are both notarized and stapled.
+# The files to publish: the disk image and, beside it, the zip of the app that updates install
+# from; app and image are notarized and stapled.
 release: build
 	scripts/package.sh "$(APP)" "$(DMG)" "$(SIGN_IDENTITY)" "$(NOTARY_PROFILE)"
 

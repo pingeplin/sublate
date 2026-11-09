@@ -44,20 +44,26 @@ extension YtdlpState {
 }
 
 extension AppUpdateState {
-    /// What the last check found.
+    /// What the last check or install found.
     var status: Status {
         switch self {
         case .unchecked, .checking: .idle
         case .upToDate: .info("Sublate is up to date.")
         case .available(let update): .info("Version \(update.version) is available.")
-        case .failed(let message): .failure(message)
+        case .downloading(let update, let fraction):
+            .info("Downloading version \(update.version)…" + (fraction.map { " \(Int(($0 * 100).rounded()))%" } ?? ""))
+        case .installing(let update): .info("Installing version \(update.version)…")
+        case .readyToRelaunch(let update): .info("Version \(update.version) is installed. Relaunch Sublate to use it.")
+        case .installFailed(_, let message), .failed(let message): .failure(message)
         }
     }
 
-    /// Where the newer version is downloaded from.
+    /// Where the newer version is downloaded from by hand.
     var downloadPage: URL? {
-        guard case .available(let update) = self else { return nil }
-        return URL(string: update.pageUrl)
+        switch self {
+        case .available(let update), .installFailed(let update, _): URL(string: update.pageUrl)
+        default: nil
+        }
     }
 }
 

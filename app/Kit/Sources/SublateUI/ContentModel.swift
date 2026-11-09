@@ -4,7 +4,7 @@ import Observation
 
 @MainActor
 @Observable
-public final class ContentModel {
+public final class ContentModel: JobActivity {
     static let defaultTarget = "zh-TW"
     static let outputFolder = "Sublate"
 
@@ -123,21 +123,5 @@ public final class ContentModel {
         } catch {
             return error.userMessage
         }
-    }
-
-    /// Applies every progress value the operation reports before handing back its result.
-    private func tracking<Value: Sendable, Output: Sendable>(
-        _ apply: (Value) -> Void,
-        during operation: @Sendable (ProgressChannel<Value>) async throws -> Output
-    ) async throws -> Output {
-        let channel = ProgressChannel<Value>()
-        async let output = {
-            defer { channel.finish() }
-            return try await operation(channel)
-        }()
-        for await value in channel.values {
-            apply(value)
-        }
-        return try await output
     }
 }

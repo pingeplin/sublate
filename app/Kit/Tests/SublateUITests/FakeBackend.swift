@@ -15,6 +15,10 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     var latestYtdlp: Result<String, BackendError> = .success("2026.09.02")
     var clearing: Result<Void, BackendError> = .success(())
     var appUpdate: Result<AppUpdate?, BackendError> = .success(nil)
+    var appDownload: Result<String, BackendError> = .success("/cache/app-update/Sublate.app")
+    var downloadProgress: [(done: UInt64, total: UInt64?)] = [(50, 100), (100, 100)]
+    /// Runs after each progress report, while the download is still in progress.
+    var afterDownloadProgress: () async -> Void = {}
     var metadata: Result<VideoMetadata, BackendError> = .success(.sample())
     var video: Result<String, BackendError> = .success("/out/Title [abc].mp4")
     var subtitles: Result<SubtitleFiles, BackendError> = .success(
@@ -28,6 +32,7 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     private(set) var updateRequests: [Bool] = []
     private(set) var clearRequests = 0
     private(set) var updateChecks: [String] = []
+    private(set) var appDownloads: [AppUpdate] = []
     private(set) var fetchedURLs: [String] = []
     private(set) var videoRequests: [VideoRequest] = []
     private(set) var subtitleRequests: [SubtitleRequest] = []
@@ -86,6 +91,15 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
         return try appUpdate.get()
     }
 
+    func downloadAppUpdate(update: AppUpdate, listener: AppDownloadListener) async throws -> String {
+        appDownloads.append(update)
+        for report in downloadProgress {
+            listener.onDownloadProgress(done: report.done, total: report.total)
+            await afterDownloadProgress()
+        }
+        return try appDownload.get()
+    }
+
     func fetchMetadata(url: String) async throws -> VideoMetadata {
         fetchedURLs.append(url)
         return try metadata.get()
@@ -117,8 +131,13 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
 
 extension AppUpdate {
     static let sample = AppUpdate(
-        version: "0.2.0", pageUrl: "https://github.com/pingeplin/sublate/releases/tag/v0.2.0"
+        version: "0.2.0",
+        pageUrl: "https://github.com/pingeplin/sublate/releases/tag/v0.2.0",
+        archiveSha256: "2b27b008b3a0888ec3fa29d6a6581467ad6b786db305e6800379a041756604f0"
     )
+
+    /// A release that publishes no archive, only its page.
+    static let pageOnly = AppUpdate(version: sample.version, pageUrl: sample.pageUrl, archiveSha256: nil)
 }
 
 extension VideoMetadata {

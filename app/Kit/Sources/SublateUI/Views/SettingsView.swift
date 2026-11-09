@@ -62,27 +62,39 @@ public struct SettingsView: View {
 
             Section {
                 LabeledContent("Version") {
-                    if updates.isChecking {
+                    if updates.isBusy {
                         ProgressView().controlSize(.small)
                     }
                     Text(updates.currentVersion)
                     Button("Check for Updates") {
                         Task { await updates.check() }
                     }
-                    .disabled(updates.isChecking)
+                    .disabled(updates.isBusy || updates.isAwaitingRelaunch)
                 }
                 if updates.state.status != .idle {
                     HStack {
                         StatusLine(status: updates.state.status, isBusy: false)
-                        if let page = updates.state.downloadPage {
+                        if updates.canInstall {
+                            Button("Install and Relaunch") {
+                                Task { await updates.install() }
+                            }
+                            .disabled(updates.isBlockedByJob)
+                        } else if updates.isAwaitingRelaunch {
+                            Button("Relaunch", action: updates.relaunch)
+                                .disabled(updates.isBlockedByJob)
+                        } else if let page = updates.state.downloadPage {
                             Link("Download…", destination: page)
                         }
+                    }
+                    if updates.isBlockedByJob && (updates.canInstall || updates.isAwaitingRelaunch) {
+                        Text("Finish the current download or translation first.")
+                            .foregroundStyle(.secondary)
                     }
                 }
             } header: {
                 Text("Sublate")
             } footer: {
-                Text("To update, download the newer version from its release page and drag it to Applications.")
+                Text("Sublate installs a newer version itself and relaunches. When it cannot, such as when it runs from the disk image, download the newer version from its release page and drag it to Applications.")
             }
 
             Section {
