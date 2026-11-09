@@ -6,6 +6,7 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::retry::{Failure, RetryPolicy};
 use super::{BatchRequest, Translator};
 use crate::auth::CredentialProvider;
 use crate::error::{AppError, AppResult};
@@ -16,8 +17,11 @@ const API_VERSION: &str = "2023-06-01";
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
 const MAX_TOKENS: u32 = 16_000;
 const EFFORT: &str = "medium";
-const MAX_HTTP_ATTEMPTS: u32 = 4;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
+const HTTP_RETRY: RetryPolicy = RetryPolicy {
+    max_attempts: 4,
+    backoff,
+};
 
 pub struct ClaudeTranslator {
     http: reqwest::Client,
@@ -34,17 +38,7 @@ impl ClaudeTranslator {
     }
 
     async fn send(&self, body: &Value) -> AppResult<String> {
-        let mut attempt = 1;
-        loop {
-            match self.post(body).await {
-                Ok(text) => return Ok(text),
-                Err(Failure::Transient { retry_after, .. }) if attempt < MAX_HTTP_ATTEMPTS => {
-                    tokio::time::sleep(retry_after.unwrap_or_else(|| backoff(attempt))).await;
-                    attempt += 1;
-                }
-                Err(Failure::Transient { error, .. } | Failure::Fatal(error)) => return Err(error),
-            }
-        }
+        HTTP_RETRY.run(|| self.post(body)).await
     }
 
     async fn post(&self, body: &Value) -> Result<String, Failure> {
@@ -78,14 +72,6 @@ impl ClaudeTranslator {
             Failure::Fatal(error)
         })
     }
-}
-
-enum Failure {
-    Transient {
-        error: AppError,
-        retry_after: Option<Duration>,
-    },
-    Fatal(AppError),
 }
 
 /// Connection resets, HTTP/2 GOAWAY and body read errors may all succeed on a fresh
@@ -361,5 +347,19 @@ mod tests {
             describe_error(StatusCode::UNAUTHORIZED, body),
             "HTTP 401 Unauthorized: bad token"
         );
+    }
+
+    #[test]
+    fn rate_limits_and_server_errors_are_retried_and_client_errors_are_not() {
+        assert!(is_retryable(StatusCode::TOO_MANY_REQUESTS));
+        assert!(is_retryable(StatusCode::from_u16(529).unwrap()));
+        assert!(!is_retryable(StatusCode::BAD_REQUEST));
+        assert!(!is_retryable(StatusCode::UNAUTHORIZED));
+    }
+
+    #[test]
+    fn a_request_that_cannot_be_built_is_not_retried() {
+        let error = reqwest::Client::new().get("not a url").build().unwrap_err();
+        assert!(matches!(transport_failure(error), Failure::Fatal(AppError::Api(_))));
     }
 }
