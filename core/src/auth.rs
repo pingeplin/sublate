@@ -175,20 +175,50 @@ pub fn resolve_provider(env: &ProcessEnv, chosen: Arc<SavedSetting>) -> Option<B
     Some(Box::new(AntProfile::new(env.clone(), chosen)))
 }
 
+/// Where the user's shell environment is read from.
+#[async_trait]
+pub trait ShellEnvironment: Send + Sync {
+    async fn load(&self) -> ProcessEnv;
+}
+
+/// The user's login shell, whose profile a Finder-launched app does not inherit.
+pub struct LoginShell;
+
+#[async_trait]
+impl ShellEnvironment for LoginShell {
+    async fn load(&self) -> ProcessEnv {
+        ProcessEnv::load().await
+    }
+}
+
+#[async_trait]
+impl ShellEnvironment for ProcessEnv {
+    async fn load(&self) -> ProcessEnv {
+        self.clone()
+    }
+}
+
 /// The key saved in the app wins; the shell is only consulted, once, when there is none.
-#[derive(Default)]
 pub struct CredentialChain {
     saved_key: SavedSetting,
     ant_profile: Arc<SavedSetting>,
+    environment: Box<dyn ShellEnvironment>,
     shell: OnceCell<Option<Box<dyn CredentialSource>>>,
 }
 
+impl Default for CredentialChain {
+    fn default() -> Self {
+        Self::new(Box::new(LoginShell))
+    }
+}
+
 impl CredentialChain {
-    #[cfg(test)]
-    fn with_shell(shell: Option<Box<dyn CredentialSource>>) -> Self {
+    pub fn new(environment: Box<dyn ShellEnvironment>) -> Self {
         Self {
-            shell: OnceCell::new_with(Some(shell)),
-            ..Self::default()
+            saved_key: SavedSetting::default(),
+            ant_profile: Arc::default(),
+            environment,
+            shell: OnceCell::new(),
         }
     }
 
@@ -211,7 +241,7 @@ impl CredentialChain {
     }
 
     async fn shell(&self) -> Option<&dyn CredentialSource> {
-        let resolve = || async { resolve_provider(&ProcessEnv::load().await, Arc::clone(&self.ant_profile)) };
+        let resolve = || async { resolve_provider(&self.environment.load().await, Arc::clone(&self.ant_profile)) };
         self.shell.get_or_init(resolve).await.as_deref()
     }
 }
@@ -368,8 +398,7 @@ mod tests {
     #[tokio::test]
     async fn a_profile_saved_after_the_shell_was_read_is_used_at_once() {
         let bin = path_with_ant();
-        let chain = CredentialChain::default();
-        let _ = chain.shell.set(resolve_provider(&shell_with(&bin, ""), Arc::clone(&chain.ant_profile)));
+        let chain = CredentialChain::new(Box::new(shell_with(&bin, "")));
         assert_eq!(chain.source().await.as_deref(), Some("the active ant profile"));
 
         chain.save_profile(Some("  mine\n".into()));
@@ -380,13 +409,20 @@ mod tests {
         assert_eq!(chain.source().await.as_deref(), Some("the active ant profile"));
     }
 
-    fn shell_key(key: &str) -> Option<Box<dyn CredentialSource>> {
-        Some(Box::new(StaticApiKey(key.into())))
+    /// Fails the test if the chain reads the shell at all.
+    struct UnreadShell;
+
+    #[async_trait]
+    impl ShellEnvironment for UnreadShell {
+        async fn load(&self) -> ProcessEnv {
+            panic!("the shell was consulted")
+        }
     }
 
     #[tokio::test]
     async fn the_saved_key_wins_over_the_shell() {
-        let chain = CredentialChain::with_shell(shell_key("from-shell"));
+        let shell = ProcessEnv::from_vars([("ANTHROPIC_API_KEY", "from-shell")]);
+        let chain = CredentialChain::new(Box::new(shell));
         assert_eq!(chain.source().await.as_deref(), Some("ANTHROPIC_API_KEY"));
         assert!(chain.credential().await.unwrap() == Credential::ApiKey("from-shell".into()));
 
@@ -400,17 +436,16 @@ mod tests {
 
     #[tokio::test]
     async fn a_saved_key_never_consults_the_shell() {
-        let chain = CredentialChain::default();
+        let chain = CredentialChain::new(Box::new(UnreadShell));
         chain.save_key(Some("saved".into()));
 
         assert!(chain.credential().await.unwrap() == Credential::ApiKey("saved".into()));
         assert_eq!(chain.source().await.as_deref(), Some(SAVED_KEY_SOURCE));
-        assert!(!chain.shell.initialized());
     }
 
     #[tokio::test]
     async fn without_any_credential_the_error_points_at_settings() {
-        let chain = CredentialChain::with_shell(None);
+        let chain = CredentialChain::new(Box::new(ProcessEnv::default()));
         assert_eq!(chain.source().await, None);
         let err = chain.credential().await.err().unwrap();
         assert_eq!(
