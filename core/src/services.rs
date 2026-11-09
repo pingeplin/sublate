@@ -12,7 +12,9 @@ use crate::subtitle_job::{download_and_translate, SubtitleOutput};
 use crate::toolchain::Toolchain;
 use crate::translate::claude::ClaudeTranslator;
 use crate::translate::Translator;
-use crate::update::{newer_release, AppRelease, GitHubAppReleases, GitHubReleases, Installs, Updater, Version};
+use crate::update::{
+    newer_release, ActiveRelease, AppRelease, GitHubAppReleases, GitHubReleases, Installs, Updater, Version,
+};
 use crate::ytdlp::YtDlp;
 
 const INSTALLS_DIR: &str = "yt-dlp";
@@ -39,12 +41,14 @@ impl Services {
         let installs = Installs::new(locations.support.join(INSTALLS_DIR));
         let newest = installs.newest();
         installs.retain(newest.as_ref().map(|install| &install.version));
+        let active = Arc::new(ActiveRelease::new(newest));
         Ok(Self {
-            ytdlp: YtDlp::new(tools, newest, &locations.cache),
+            ytdlp: YtDlp::new(tools, Arc::clone(&active), &locations.cache),
             translator: Box::new(ClaudeTranslator::new(Box::new(credentials))?),
             updater: Updater::new(
                 Box::new(GitHubReleases::new()?),
                 installs,
+                active,
                 locations.support.join(UPDATE_MARKER),
             ),
         })
@@ -74,19 +78,14 @@ impl AppState {
 
     /// The yt-dlp release in use, or `None` until one has been downloaded.
     pub async fn ytdlp_version(&self) -> AppResult<Option<Version>> {
-        Ok(self.services().await?.ytdlp.version())
+        Ok(self.services().await?.updater.version())
     }
 
     /// Switches to the latest yt-dlp release when it is newer, and returns the version now in
     /// use. Unless forced, the first release is not downloaded and the release feed is asked
     /// at most once a day.
     pub async fn update_ytdlp(&self, force: bool) -> AppResult<Option<Version>> {
-        let services = self.services().await?;
-        let current = services.ytdlp.version();
-        if let Some(install) = services.updater.refresh(current.as_ref(), force).await? {
-            services.ytdlp.switch_to(install);
-        }
-        Ok(services.ytdlp.version())
+        self.services().await?.updater.refresh(force).await
     }
 
     /// The Sublate release to move to, or `None` when `current`, the version that is running,
@@ -99,7 +98,6 @@ impl AppState {
     /// caches, leaving it as it was before its first launch.
     pub async fn clear_data(&self) -> AppResult<()> {
         let services = self.services().await?;
-        services.ytdlp.uninstall();
         services.updater.clear().await?;
         services.ytdlp.clear_cache().await?;
         // Deleted only when empty: the system keeps files of its own beside the app's.

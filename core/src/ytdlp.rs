@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
@@ -10,7 +10,7 @@ use crate::metadata::{parse_metadata, SubtitleTrack, TrackKind, VideoMetadata};
 use crate::process;
 use crate::subtitle_job::SubtitleSource;
 use crate::toolchain::Toolchain;
-use crate::update::{Install, Version};
+use crate::update::ActiveRelease;
 
 /// What Finder-launched apps get; fixed so tools on the user's own PATH never take part.
 const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -19,8 +19,8 @@ const PROGRESS_TAG: &str = "CT_PROGRESS";
 const PATH_TAG: &str = "CT_PATH";
 
 pub struct YtDlp {
-    /// `None` until a release is downloaded; replaced when the updater installs a newer one.
-    install: RwLock<Option<Install>>,
+    /// Read at each run, so a release the updater switches to is used from the next run on.
+    release: Arc<ActiveRelease>,
     /// Options every invocation starts with.
     base_args: Vec<String>,
     cache_dir: PathBuf,
@@ -40,7 +40,7 @@ enum Source<'a> {
 impl YtDlp {
     /// Everything yt-dlp reads or runs is pinned to the bundle and `cache_dir`: the user's
     /// yt-dlp config, ffmpeg and JS runtime are never picked up.
-    pub fn new(tools: Toolchain, install: Option<Install>, cache_dir: &Path) -> Self {
+    pub fn new(tools: Toolchain, release: Arc<ActiveRelease>, cache_dir: &Path) -> Self {
         let text = |path: &Path| path.to_string_lossy().into_owned();
         let deno_dir = cache_dir.join("deno");
         let cache_dir = cache_dir.join("yt-dlp");
@@ -52,7 +52,7 @@ impl YtDlp {
             "--cache-dir".into(), text(&cache_dir),
         ];
         Self {
-            install: RwLock::new(install),
+            release,
             base_args,
             cache_dir,
             deno_dir,
@@ -60,27 +60,10 @@ impl YtDlp {
         }
     }
 
-    pub fn version(&self) -> Option<Version> {
-        self.install().map(|install| install.version)
-    }
-
-    pub fn switch_to(&self, install: Install) {
-        *self.install.write().expect("install lock") = Some(install);
-    }
-
-    /// Back to having no release, as after its files are deleted.
-    pub fn uninstall(&self) {
-        *self.install.write().expect("install lock") = None;
-    }
-
     /// Deletes what yt-dlp and deno cached; both fill it again as they run.
     pub async fn clear_cache(&self) -> AppResult<()> {
         disk::delete(&self.cache_dir).await?;
         Ok(disk::delete(&self.deno_dir).await?)
-    }
-
-    fn install(&self) -> Option<Install> {
-        self.install.read().expect("install lock").clone()
     }
 
     pub async fn fetch_metadata(&self, url: &str) -> AppResult<VideoMetadata> {
@@ -183,7 +166,7 @@ impl YtDlp {
         cwd: Option<&Path>,
         on_line: impl Fn(&str),
     ) -> AppResult<String> {
-        let program = self.install().ok_or(AppError::YtDlpMissing)?.program;
+        let program = self.release.get().ok_or(AppError::YtDlpMissing)?.program;
         let mut command = tokio::process::Command::new(&program);
         command.args(args).env("PATH", SYSTEM_PATH).env("DENO_DIR", &self.deno_dir);
         if let Some(dir) = cwd {
@@ -243,6 +226,7 @@ fn tail(text: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::{Install, Version};
 
     fn install(version: &str) -> Install {
         Install::at(Version::parse(version).unwrap(), &Path::new("/support").join(version))
@@ -255,12 +239,12 @@ mod tests {
         }
     }
 
-    fn ytdlp_with(install: Option<Install>) -> YtDlp {
-        YtDlp::new(tools(), install, Path::new("/cache"))
+    fn active(install: Option<Install>) -> Arc<ActiveRelease> {
+        Arc::new(ActiveRelease::new(install))
     }
 
     fn ytdlp() -> YtDlp {
-        ytdlp_with(Some(install("2026.08.19")))
+        YtDlp::new(tools(), active(Some(install("2026.08.19"))), Path::new("/cache"))
     }
 
     #[rustfmt::skip]
@@ -304,39 +288,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn switching_installs_changes_the_reported_version() {
-        let ytdlp = ytdlp();
-        let newer = install("2026.09.02");
-        ytdlp.switch_to(newer.clone());
-        assert_eq!(ytdlp.version(), Some(newer.version.clone()));
-        assert_eq!(ytdlp.install(), Some(newer));
-    }
-
     #[tokio::test]
-    async fn nothing_runs_until_a_release_is_installed() {
-        let ytdlp = ytdlp_with(None);
-        assert_eq!(ytdlp.version(), None);
-
-        let err = ytdlp.fetch_metadata("https://example.com/v").await.unwrap_err();
-        assert_eq!(err.to_string(), "yt-dlp is not installed; download it in Settings (⌘,)");
-
-        ytdlp.switch_to(install("2026.09.02"));
-        assert_eq!(ytdlp.version(), Some(Version::parse("2026.09.02").unwrap()));
-    }
-
-    #[tokio::test]
-    async fn uninstalling_and_clearing_the_cache_leave_nothing_behind() {
+    async fn clearing_the_cache_leaves_nothing_behind() {
         let dir = tempfile::tempdir().unwrap();
-        let ytdlp = YtDlp::new(tools(), Some(install("2026.08.19")), dir.path());
+        let ytdlp = YtDlp::new(tools(), active(None), dir.path());
         for cache in ["yt-dlp/youtube-sigfuncs", "deno/npm"] {
             std::fs::create_dir_all(dir.path().join(cache)).unwrap();
         }
 
-        ytdlp.uninstall();
         ytdlp.clear_cache().await.unwrap();
 
-        assert_eq!(ytdlp.version(), None);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 
@@ -344,12 +305,16 @@ mod tests {
     const INFO: &str = r#"{"id": "abc", "title": "Title"}"#;
 
     /// A stand-in release: a shell script run in place of yt-dlp.
-    fn scripted(dir: &Path, script: &str) -> YtDlp {
+    fn scripted_release(dir: &Path, script: &str) -> Install {
         use std::os::unix::fs::PermissionsExt;
         let install = Install::at(Version::parse("2026.08.19").unwrap(), dir);
         std::fs::write(&install.program, format!("#!/bin/sh\n{script}\n")).unwrap();
         std::fs::set_permissions(&install.program, std::fs::Permissions::from_mode(0o755)).unwrap();
-        YtDlp::new(tools(), Some(install), &dir.join("cache"))
+        install
+    }
+
+    fn scripted(dir: &Path, script: &str) -> YtDlp {
+        YtDlp::new(tools(), active(Some(scripted_release(dir, script))), &dir.join("cache"))
     }
 
     fn english() -> SubtitleTrack {
@@ -358,6 +323,19 @@ mod tests {
             name: "English".into(),
             kind: TrackKind::Manual,
         }
+    }
+
+    #[tokio::test]
+    async fn each_run_uses_the_release_in_use_at_that_moment() {
+        let dir = tempfile::tempdir().unwrap();
+        let release = active(None);
+        let ytdlp = YtDlp::new(tools(), Arc::clone(&release), &dir.path().join("cache"));
+
+        let err = ytdlp.fetch_metadata(URL).await.unwrap_err();
+        assert_eq!(err.to_string(), "yt-dlp is not installed; download it in Settings (⌘,)");
+
+        release.set(Some(scripted_release(dir.path(), &format!("echo '{INFO}'"))));
+        assert_eq!(ytdlp.fetch_metadata(URL).await.unwrap().id, "abc");
     }
 
     #[tokio::test]
@@ -395,7 +373,7 @@ mod tests {
     #[tokio::test]
     async fn a_release_that_cannot_start_is_reported() {
         let dir = tempfile::tempdir().unwrap();
-        let ytdlp = YtDlp::new(tools(), Some(install("2026.08.19")), dir.path());
+        let ytdlp = YtDlp::new(tools(), active(Some(install("2026.08.19"))), dir.path());
 
         let err = ytdlp.fetch_metadata(URL).await.unwrap_err().to_string();
 

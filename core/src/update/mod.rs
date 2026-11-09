@@ -1,14 +1,17 @@
+mod active;
 mod app;
 mod github;
 mod installs;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 
+pub use active::ActiveRelease;
 pub use app::{newer_release, AppRelease, AppReleaseFeed};
 pub use github::{GitHubAppReleases, GitHubReleases};
 pub use installs::{Install, Installs, Version, PROGRAM};
@@ -38,43 +41,56 @@ pub trait ReleaseFeed: Send + Sync {
 pub struct Updater {
     feed: Box<dyn ReleaseFeed>,
     installs: Installs,
+    /// Changed only here, and only while `running` is held.
+    active: Arc<ActiveRelease>,
     /// Touched after each completed check; its age throttles the next one.
     marker: PathBuf,
     running: tokio::sync::Mutex<()>,
 }
 
 impl Updater {
-    pub fn new(feed: Box<dyn ReleaseFeed>, installs: Installs, marker: PathBuf) -> Self {
+    pub fn new(feed: Box<dyn ReleaseFeed>, installs: Installs, active: Arc<ActiveRelease>, marker: PathBuf) -> Self {
         Self {
             feed,
             installs,
+            active,
             marker,
             running: tokio::sync::Mutex::new(()),
         }
     }
 
-    /// Returns the latest release once it is installed and newer than `current`, the release
-    /// in use if there is one. Unless forced, the first release is left for the user to ask
-    /// for and the feed is asked at most once a day; a failed check is retried next time.
-    pub async fn refresh(&self, current: Option<&Version>, force: bool) -> AppResult<Option<Install>> {
+    /// The release in use, or `None` until one has been downloaded.
+    pub fn version(&self) -> Option<Version> {
+        self.active.version()
+    }
+
+    /// Switches to the latest release when it is newer than the one in use, and returns the
+    /// version now in use. Unless forced, the first release is left for the user to ask for
+    /// and the feed is asked at most once a day; a failed check is retried next time.
+    pub async fn refresh(&self, force: bool) -> AppResult<Option<Version>> {
         let _running = self.running.lock().await;
+        let current = self.active.version();
         if !force && (current.is_none() || !self.is_due()) {
-            return Ok(None);
+            return Ok(current);
         }
         let release = self.feed.latest().await?;
-        let install = if current.is_none_or(|current| release.version > *current) {
+        let install = if current.as_ref().is_none_or(|current| release.version > *current) {
             Some(self.install(&release).await?)
         } else {
             None
         };
         self.mark_checked(&release.version).await?;
-        Ok(install)
+        if let Some(install) = install {
+            self.active.set(Some(install));
+        }
+        Ok(self.active.version())
     }
 
-    /// Deletes every installed release and the record of the last check, once any download
-    /// in progress has finished.
+    /// Stops using any release, then deletes every installed one and the record of the last
+    /// check, once any download in progress has finished.
     pub async fn clear(&self) -> AppResult<()> {
         let _running = self.running.lock().await;
+        self.active.set(None);
         disk::delete(self.installs.root()).await?;
         Ok(disk::delete(&self.marker).await?)
     }
@@ -135,7 +151,6 @@ async fn sha256_hex(path: &Path) -> AppResult<String> {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
 
     use super::installs::test_support::fake_archive;
     use super::*;
@@ -172,6 +187,7 @@ mod tests {
     struct Fixture {
         dir: tempfile::TempDir,
         calls: Arc<Calls>,
+        active: Arc<ActiveRelease>,
         updater: Updater,
     }
 
@@ -195,12 +211,25 @@ mod tests {
                 calls: Arc::clone(&calls),
             };
             adjust(&mut feed);
+            let active = Arc::new(ActiveRelease::default());
             let updater = Updater::new(
                 Box::new(feed),
                 Installs::new(dir.path().join("yt-dlp")),
+                Arc::clone(&active),
                 dir.path().join("support/last-check"),
             );
-            Self { dir, calls, updater }
+            Self {
+                dir,
+                calls,
+                active,
+                updater,
+            }
+        }
+
+        /// As if `text` were installed earlier and is in use now.
+        fn in_use(self, text: &str) -> Self {
+            self.active.set(Some(Install::at(version(text), &self.dir.path().join("earlier"))));
+            self
         }
 
         fn installed(&self) -> Option<Install> {
@@ -213,14 +242,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn installs_a_newer_release_and_cleans_up_the_download() {
-        let fixture = Fixture::offering("2026.09.02").await;
+    async fn switches_to_a_newer_release_and_cleans_up_the_download() {
+        let fixture = Fixture::offering("2026.09.02").await.in_use("2026.08.19");
 
-        let stale = version("2026.08.19");
-        let install = fixture.updater.refresh(Some(&stale), false).await.unwrap().unwrap();
+        let now = fixture.updater.refresh(false).await.unwrap();
 
-        assert_eq!(install.version, version("2026.09.02"));
-        assert_eq!(fixture.installed(), Some(install));
+        assert_eq!(now, Some(version("2026.09.02")));
+        assert_eq!(fixture.active.get(), fixture.installed());
+        assert_eq!(fixture.updater.version(), now);
         assert!(!fixture.dir.path().join("yt-dlp").join(ARCHIVE).exists());
     }
 
@@ -228,59 +257,65 @@ mod tests {
     async fn the_first_release_is_installed_only_when_asked_for() {
         let fixture = Fixture::offering("2026.09.02").await;
 
-        assert_eq!(fixture.updater.refresh(None, false).await.unwrap(), None);
+        assert_eq!(fixture.updater.refresh(false).await.unwrap(), None);
         assert_eq!(fixture.calls.latest.load(Ordering::SeqCst), 0);
 
-        let install = fixture.updater.refresh(None, true).await.unwrap().unwrap();
-        assert_eq!(install.version, version("2026.09.02"));
-        assert_eq!(fixture.installed(), Some(install));
+        assert_eq!(fixture.updater.refresh(true).await.unwrap(), Some(version("2026.09.02")));
+        assert!(fixture.installed().is_some());
+        assert_eq!(fixture.active.get(), fixture.installed());
     }
 
     #[tokio::test]
-    async fn clearing_deletes_the_installs_and_forgets_the_last_check() {
+    async fn clearing_stops_using_the_release_deletes_the_installs_and_forgets_the_last_check() {
         let fixture = Fixture::offering("2026.09.02").await;
-        fixture.updater.refresh(None, true).await.unwrap();
+        fixture.updater.refresh(true).await.unwrap();
 
         fixture.updater.clear().await.unwrap();
         fixture.updater.clear().await.unwrap();
 
+        assert_eq!(fixture.updater.version(), None);
         assert_eq!(fixture.installed(), None);
         assert!(!fixture.dir.path().join("yt-dlp").exists());
         assert!(!fixture.dir.path().join("support").join("last-check").exists());
     }
 
     #[tokio::test]
-    async fn leaves_a_current_install_alone() {
-        let fixture = Fixture::offering("2026.08.19").await;
+    async fn leaves_a_current_or_newer_release_in_use() {
+        let current = Fixture::offering("2026.08.19").await.in_use("2026.08.19");
+        assert_eq!(current.updater.refresh(false).await.unwrap(), Some(version("2026.08.19")));
 
-        assert_eq!(fixture.updater.refresh(Some(&version("2026.08.19")), false).await.unwrap(), None);
-        assert_eq!(fixture.updater.refresh(Some(&version("2026.10.01")), true).await.unwrap(), None);
-        assert_eq!(fixture.calls.downloads.load(Ordering::SeqCst), 0);
-        assert_eq!(fixture.installed(), None);
+        let newer = Fixture::offering("2026.08.19").await.in_use("2026.10.01");
+        assert_eq!(newer.updater.refresh(true).await.unwrap(), Some(version("2026.10.01")));
+
+        for fixture in [current, newer] {
+            assert_eq!(fixture.calls.downloads.load(Ordering::SeqCst), 0);
+            assert_eq!(fixture.installed(), None);
+        }
     }
 
     #[tokio::test]
-    async fn asks_the_feed_once_a_day_unless_forced() {
-        let fixture = Fixture::offering("2026.08.19").await;
-        let current = version("2026.08.19");
+    async fn asks_the_feed_once_a_day_unless_forced_and_always_reports_the_release_in_use() {
+        let fixture = Fixture::offering("2026.08.19").await.in_use("2026.08.19");
+        let current = Some(version("2026.08.19"));
 
-        fixture.updater.refresh(Some(&current), false).await.unwrap();
-        fixture.updater.refresh(Some(&current), false).await.unwrap();
+        assert_eq!(fixture.updater.refresh(false).await.unwrap(), current);
+        assert_eq!(fixture.updater.refresh(false).await.unwrap(), current);
         assert_eq!(fixture.calls.latest.load(Ordering::SeqCst), 1);
 
-        fixture.updater.refresh(Some(&current), true).await.unwrap();
+        assert_eq!(fixture.updater.refresh(true).await.unwrap(), current);
         assert_eq!(fixture.calls.latest.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
     async fn reuses_a_release_that_is_already_installed() {
-        let fixture = Fixture::offering("2026.09.02").await;
-        let stale = version("2026.08.19");
+        let fixture = Fixture::offering("2026.09.02").await.in_use("2026.08.19");
+        let first = fixture.updater.refresh(true).await.unwrap();
+        let fixture = fixture.in_use("2026.08.19");
 
-        let first = fixture.updater.refresh(Some(&stale), true).await.unwrap();
-        let second = fixture.updater.refresh(Some(&stale), true).await.unwrap();
+        let second = fixture.updater.refresh(true).await.unwrap();
 
         assert_eq!(first, second);
+        assert_eq!(fixture.active.get(), fixture.installed());
         assert_eq!(fixture.calls.downloads.load(Ordering::SeqCst), 1);
     }
 
@@ -289,11 +324,13 @@ mod tests {
         let fixture = Fixture::build("2026.09.02", |feed| {
             feed.release.as_mut().unwrap().sha256 = "00".repeat(32);
         })
-        .await;
+        .await
+        .in_use("2026.08.19");
 
-        let err = fixture.updater.refresh(Some(&version("2026.08.19")), false).await.unwrap_err();
+        let err = fixture.updater.refresh(false).await.unwrap_err();
 
         assert_eq!(err.to_string(), "yt-dlp update failed: release 2026.09.02 does not match its checksum");
+        assert_eq!(fixture.updater.version(), Some(version("2026.08.19")));
         assert_eq!(fixture.installed(), None);
         assert!(!fixture.dir.path().join("yt-dlp").join(ARCHIVE).exists());
     }
@@ -303,11 +340,11 @@ mod tests {
         let fixture = Fixture::build("2026.09.02", |feed| {
             feed.release = Err(AppError::Update("offline".into()));
         })
-        .await;
-        let current = version("2026.08.19");
+        .await
+        .in_use("2026.08.19");
 
-        assert!(fixture.updater.refresh(Some(&current), false).await.is_err());
-        assert!(fixture.updater.refresh(Some(&current), false).await.is_err());
+        assert!(fixture.updater.refresh(false).await.is_err());
+        assert!(fixture.updater.refresh(false).await.is_err());
         assert_eq!(fixture.calls.latest.load(Ordering::SeqCst), 2);
     }
 }

@@ -4,6 +4,7 @@
 mod common;
 
 use std::path::Path;
+use std::sync::Arc;
 
 use common::{fixture_path, ko_auto_track};
 use sublate_core::auth::CredentialChain;
@@ -15,7 +16,7 @@ use sublate_core::subtitle_job::{translate_subtitle_file, SubtitleSource};
 use sublate_core::translate::claude::ClaudeTranslator;
 use sublate_core::toolchain::Toolchain;
 use sublate_core::translate::{BatchRequest, Translator};
-use sublate_core::update::{GitHubReleases, Install, Installs, ReleaseFeed, Updater};
+use sublate_core::update::{ActiveRelease, GitHubReleases, Installs, ReleaseFeed, Updater};
 use sublate_core::ytdlp::YtDlp;
 
 const KOREAN_VIDEO: &str = "https://www.youtube.com/watch?v=SrvYHXmiLAY";
@@ -27,27 +28,28 @@ fn tools() -> Toolchain {
     Toolchain::bundled(&dir).expect("run `make tools` first")
 }
 
-fn updater(dir: &Path) -> Updater {
+fn updater(dir: &Path, active: Arc<ActiveRelease>) -> Updater {
     let feed = GitHubReleases::new().unwrap();
-    Updater::new(Box::new(feed), Installs::new(dir.join("yt-dlp")), dir.join("last-check"))
+    Updater::new(Box::new(feed), Installs::new(dir.join("yt-dlp")), active, dir.join("last-check"))
 }
 
 /// The latest release, kept under the target directory so only the first run downloads it
 /// and later runs look for a newer one once a day, as the app does.
-async fn latest_release() -> Install {
+async fn latest_release() -> Arc<ActiveRelease> {
     static DOWNLOADING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _downloading = DOWNLOADING.lock().await;
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR"));
     let installed = Installs::new(dir.join("yt-dlp")).newest();
-    let current = installed.as_ref().map(|install| &install.version);
-    let newer = updater(dir).refresh(current, installed.is_none()).await.unwrap();
-    newer.or(installed).expect("a yt-dlp release")
+    let first = installed.is_none();
+    let active = Arc::new(ActiveRelease::new(installed));
+    updater(dir, Arc::clone(&active)).refresh(first).await.unwrap().expect("a yt-dlp release");
+    active
 }
 
 /// Caches go to a throwaway directory so each run starts as a fresh install would.
 async fn ytdlp() -> (YtDlp, tempfile::TempDir) {
     let cache = tempfile::tempdir().unwrap();
-    (YtDlp::new(tools(), Some(latest_release().await), cache.path()), cache)
+    (YtDlp::new(tools(), latest_release().await, cache.path()), cache)
 }
 
 fn translator() -> ClaudeTranslator {
@@ -117,13 +119,15 @@ async fn updater_installs_the_first_release_from_github() {
     let dir = tempfile::tempdir().unwrap();
     let latest = GitHubReleases::new().unwrap().latest().await.unwrap().version;
 
-    let install = updater(dir.path()).refresh(None, true).await.unwrap().expect("a first release");
+    let active = Arc::new(ActiveRelease::default());
+    let version = updater(dir.path(), Arc::clone(&active)).refresh(true).await.unwrap();
+    let install = active.get().expect("a first release");
     println!("installed {} at {}", install.version, install.program.display());
-    assert_eq!(install.version, latest);
-    assert_eq!(Installs::new(dir.path().join("yt-dlp")).newest(), Some(install.clone()));
+    assert_eq!(version, Some(latest));
+    assert_eq!(Installs::new(dir.path().join("yt-dlp")).newest(), Some(install));
 
     let cache = tempfile::tempdir().unwrap();
-    let ytdlp = YtDlp::new(tools(), Some(install), cache.path());
+    let ytdlp = YtDlp::new(tools(), active, cache.path());
     let meta = ytdlp.fetch_metadata(SHORT_VIDEO).await.unwrap();
     assert_eq!(meta.title, "Me at the zoo");
 }
