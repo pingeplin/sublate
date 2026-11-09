@@ -1,6 +1,10 @@
+<p align="center"><img src="docs/icon.svg" width="128" height="128" alt="Sublate app icon"></p>
+
 # Sublate
 
 Native macOS app (SwiftUI front end, Rust core): paste a video URL, inspect its metadata with `yt-dlp`, download the video, translate a subtitle track into another language with Claude, or both. Subtitles are written as standalone `.srt` files — never merged into the video.
+
+The name blends *subtitle* and *translate*, and it happens to be an English word too: to *sublate* (Hegel's *aufheben*) is to cancel something while preserving it at a higher level — which is what a translation does to the original line. The icon draws that: a broken source line below, lifted into one fluent translated line above.
 
 ## Install
 
@@ -49,6 +53,7 @@ Developers can skip the saved key: without one, the app falls back to `ANTHROPIC
 | `core/` | Rust crate: yt-dlp and its updater, subtitle parsing, Claude translation. `src/ffi.rs` is the only surface the UI sees, exported through [UniFFI](https://mozilla.github.io/uniffi-rs/). |
 | `app/Kit/` | Swift package: `SublateCore` (generated bindings over the static library) and `SublateUI` (view model and SwiftUI views). |
 | `app/Sublate/` | The app shell; `app/project.yml` is the XcodeGen spec. |
+| `docs/icon.svg` | Source of the app icon; `app/Sublate/Resources/AppIcon.icns` is rendered from it at 16–1024 px. |
 | `vendor/` | Pinned third-party tools (`ffmpeg`, `deno`): `fetch.sh` downloads, verifies and signs them into `vendor/tools`, which the app bundles as `Contents/Resources/tools`. |
 | `scripts/package.sh` | Builds, signs and optionally notarizes the disk image; `dmg.settings.py` is its drag-to-Applications window layout. |
 
