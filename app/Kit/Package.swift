@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SublateKit",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v14)],
     products: [.library(name: "SublateUI", targets: ["SublateUI"])],
     targets: [
         .binaryTarget(name: "sublate_coreFFI", path: "sublate_coreFFI.xcframework"),

@@ -8,7 +8,7 @@ The name blends *subtitle* and *translate*, and it happens to be an English word
 
 ## Install
 
-Download the disk image, open it and drag **Sublate** to Applications. `ffmpeg` and the `deno` JavaScript runtime are inside the app; `yt-dlp` is not, so the first launch asks you to download it in **Settings (⌘,)**. It needs macOS 26 on Apple Silicon.
+Download the disk image, open it and drag **Sublate** to Applications. `ffmpeg` and the `deno` JavaScript runtime are inside the app; `yt-dlp` is not, so the first launch asks you to download it in **Settings (⌘,)**. It needs macOS 14 or later on Apple Silicon.
 
 Translation uses your own Anthropic API key: paste it in **Settings (⌘,)**, where it is kept in your Keychain. Fetching and downloading work without one.
 
@@ -20,7 +20,7 @@ Moving the app to the Trash leaves that copy and the caches behind; **Settings �
 
 ## Build
 
-Requirements: macOS 26, Xcode 27, Rust, [XcodeGen](https://github.com/yonaskolb/XcodeGen) and [uv](https://docs.astral.sh/uv/) (`brew install xcodegen uv`), and a Developer ID Application certificate (`SIGN_IDENTITY` in the `Makefile`). uv runs the pinned [dmgbuild](https://dmgbuild.readthedocs.io) that lays out the disk image.
+Requirements: macOS 26, Xcode 27, Rust from [rustup](https://rustup.rs) (not Homebrew's `rust`, whose standard library needs macOS 26), [XcodeGen](https://github.com/yonaskolb/XcodeGen) and [uv](https://docs.astral.sh/uv/) (`brew install xcodegen uv`), and a Developer ID Application certificate (`SIGN_IDENTITY` in the `Makefile`). uv runs the pinned [dmgbuild](https://dmgbuild.readthedocs.io) that lays out the disk image.
 
 ```sh
 make run       # downloads and signs the bundled tools, builds the Rust core and the app, then opens it

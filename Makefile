@@ -1,4 +1,4 @@
-MACOSX_DEPLOYMENT_TARGET := 26.0
+MACOSX_DEPLOYMENT_TARGET := 14.0
 export MACOSX_DEPLOYMENT_TARGET
 
 # Every build is signed for distribution, so the Keychain item holding the API key stays
@@ -40,9 +40,10 @@ $(TOOLS_READY): vendor/fetch.sh vendor/tools.lock vendor/deno.entitlements $(wil
 
 # Panic messages name the source file of each dependency, which sits in the home directory.
 # The remap keeps that directory, and so the account name, out of the app that ships.
-$(XCFRAMEWORK): $(RUST_SOURCES)
+$(XCFRAMEWORK): $(RUST_SOURCES) rust-toolchain.toml Makefile scripts/check-minos.sh
 	RUSTFLAGS="--remap-path-prefix=$(HOME)=~" \
 		cargo build --manifest-path core/Cargo.toml --release --lib
+	scripts/check-minos.sh $(STATIC_LIB)
 	rm -rf $(HEADERS) $(XCFRAMEWORK)
 	$(BINDGEN) ../$(STATIC_LIB) ../$(BINDINGS) --swift-sources
 	$(BINDGEN) ../$(STATIC_LIB) ../$(HEADERS) --headers --modulemap \
