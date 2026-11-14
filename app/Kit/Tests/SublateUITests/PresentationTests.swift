@@ -88,4 +88,15 @@ struct PresentationTests {
         let url = URL.homeDirectory.appending(path: "Downloads/sublate videos")
         #expect(url.abbreviatedPath == "~/Downloads/sublate videos")
     }
+
+    @Test func aRelativeURLGivesItsAbsolutePath() {
+        let bundle = URL(filePath: "/Applications/Sublate.app/", directoryHint: .isDirectory)
+        let resources = URL(string: "Contents/Resources/", relativeTo: bundle)!
+        #expect(resources.appending(path: "tools").filePath == "/Applications/Sublate.app/Contents/Resources/tools")
+    }
+
+    @Test func theInstalledToolsAreFoundByAbsolutePath() {
+        let config = BackendConfig.installed(in: .main, identifier: "test")
+        #expect(config.toolsDir.hasPrefix("/"))
+    }
 }

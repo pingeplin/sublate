@@ -100,7 +100,9 @@ extension TrackKind {
 }
 
 extension URL {
-    var filePath: String { path(percentEncoded: false) }
+    /// Always absolute: on macOS 15, a relative URL such as `Bundle.resourceURL` gives only
+    /// its relative part.
+    var filePath: String { absoluteURL.path(percentEncoded: false) }
 
     var abbreviatedPath: String { (filePath as NSString).abbreviatingWithTildeInPath }
 }
