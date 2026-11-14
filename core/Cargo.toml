@@ -1,6 +1,6 @@
 [package]
 name = "sublate-core"
-version = "0.6.0"
+version = "0.6.1"
 description = "Fetch videos and translate subtitles"
 authors = ["eplin"]
 license = "GPL-3.0-or-later"
