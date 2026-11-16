@@ -63,7 +63,7 @@ Each video gets its own folder in `~/Downloads/Sublate/` by default (or the fold
 
 | File | Content |
 | --- | --- |
-| `<title> [<id>].mp4` | Best-quality streams, up to the chosen **Resolution**, copied into mp4 (no re-encode) with the YouTube thumbnail as cover art, so Finder/Quick Look previews show it; no embedded subtitles. AV1 videos need VLC or IINA. |
+| `<title> [<id>].mp4` | Best-quality streams, up to the chosen **Resolution**, copied into mp4 with the YouTube thumbnail as cover art, so Finder/Quick Look previews show it; no embedded subtitles. With **Format: Best quality** the streams stay as downloaded, often AV1 or VP9 with Opus, which needs VLC or IINA and which the Photos app on iPhone refuses. **Format: Apple devices** gives what the Photos app accepts. Up to 1080p it downloads YouTube's H.264 with AAC at the same height, with no conversion. A taller video (YouTube offers H.264 only up to 1080p), or one with no H.264 at that height, downloads like **Best quality** and is then converted on the Mac's media engine: video to HEVC (`hvc1`, HDR kept), audio to AAC, cover art copied. On an M1 Pro a 4K60 video converts at about 1.6× real time; the file is about twice the size of an AV1 download, and the original and the copy are both on disk until the copy replaces it. |
 | `<title> [<id>].<src>.srt` | Source subtitle as downloaded (e.g. `ko-orig`) |
 | `<title> [<id>].<target>.srt` | Translated subtitle (e.g. `zh-TW`; `.<target>.translated.srt` when source and target codes match) |
 

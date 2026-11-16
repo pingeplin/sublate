@@ -32,7 +32,7 @@ struct LiveBridgeTests {
         #expect(settings.ytdlp != .missing)
         #expect(model.video?.title == "Me at the zoo")
         #expect(model.status == .info("Done."))
-        #expect(model.progress?.videoPercent == 100)
+        #expect(model.progress?.video?.percent == 100)
         #expect(model.progress?.subtitles?.fraction == 1)
         #expect(model.files.count == 3)
         #expect(model.files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.filePath) })
@@ -42,6 +42,30 @@ struct LiveBridgeTests {
         #expect(settings.ytdlp == .missing)
         #expect(!FileManager.default.fileExists(atPath: directory.appending(path: "support").filePath))
         #expect(!FileManager.default.fileExists(atPath: directory.appending(path: "cache").filePath))
+    }
+
+    @Test func downloadsH264ForAppleDevicesWithoutConvertingUpTo1080p() async {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let backend = Backend(config: BackendConfig(
+            toolsDir: Self.vendoredTools.filePath,
+            supportDir: directory.appending(path: "support").filePath,
+            cacheDir: directory.appending(path: "cache").filePath
+        ))
+        let settings = SettingsModel(backend: backend, keyStore: FakeKeyStore(), profileStore: FakeProfileStore())
+        let model = ContentModel(backend: backend, outputDirectory: directory.appending(path: "out"))
+
+        await settings.installLatestYtdlp()
+        model.urlText = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+        await model.fetchMetadata()
+        model.content = .video
+        model.videoFormat = .appleCompatible
+        await model.getContent()
+
+        #expect(model.status == .info("Done."))
+        #expect(model.progress?.video == VideoProgress(stage: .downloading, percent: 100))
+        #expect(model.files.count == 1)
+        #expect(model.files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.filePath) })
     }
 
     private static let vendoredTools = URL(filePath: #filePath)

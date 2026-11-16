@@ -69,7 +69,7 @@ extension AppUpdateState {
 
 extension VideoMetadata {
     var reference: VideoRef {
-        VideoRef(url: url, id: id, title: title)
+        VideoRef(url: url, id: id, title: title, heights: heights)
     }
 
     var durationText: String? {

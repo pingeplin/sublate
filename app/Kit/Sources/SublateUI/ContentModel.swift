@@ -15,6 +15,8 @@ public final class ContentModel: JobActivity {
     var content = ContentChoice.videoAndSubtitles
     /// `nil` takes the best the video offers.
     var maxHeight: UInt32?
+    /// Kept across videos, unlike `maxHeight`, whose choices belong to one video.
+    var videoFormat = VideoFormat.bestQuality
 
     private(set) var status = Status.idle
     private(set) var languages: [TargetLanguage] = []
@@ -69,12 +71,13 @@ public final class ContentModel: JobActivity {
         let directory = outputDirectory.filePath
         let withVideo = content.includesVideo
         let height = maxHeight
+        let format = videoFormat
         let track = content.includesSubtitles ? sourceTrack : nil
         let target = targetCode
 
         files = []
         progress = JobProgress(
-            videoPercent: withVideo ? 0 : nil,
+            video: withVideo ? VideoProgress(percent: 0) : nil,
             subtitles: content.includesSubtitles ? (track == nil ? .unavailable : .downloading) : nil
         )
         isBusy = true
@@ -82,7 +85,7 @@ public final class ContentModel: JobActivity {
         status = .info("Working…")
 
         async let videoFailure = failure {
-            if withVideo { try await downloadVideo(reference, maxHeight: height, to: directory) }
+            if withVideo { try await downloadVideo(reference, maxHeight: height, format: format, to: directory) }
         }
         async let subtitleFailure = failure {
             if let track { try await translateSubtitles(reference, track: track, target: target, to: directory) }
@@ -91,9 +94,16 @@ public final class ContentModel: JobActivity {
         status = failures.isEmpty ? .info("Done.") : .failure(failures.joined(separator: "\n"))
     }
 
-    private func downloadVideo(_ video: VideoRef, maxHeight: UInt32?, to directory: String) async throws {
-        let path = try await tracking({ self.progress?.videoPercent = $0 }) { [backend] channel in
-            try await backend.downloadVideo(video: video, outDir: directory, maxHeight: maxHeight, listener: channel)
+    private func downloadVideo(
+        _ video: VideoRef,
+        maxHeight: UInt32?,
+        format: VideoFormat,
+        to directory: String
+    ) async throws {
+        let path = try await tracking({ self.progress?.video = $0 }) { [backend] channel in
+            try await backend.downloadVideo(
+                video: video, outDir: directory, maxHeight: maxHeight, format: format, listener: channel
+            )
         }
         files.append(OutputFile(label: "Video", url: URL(filePath: path)))
     }

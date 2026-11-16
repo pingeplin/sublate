@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use common::{fixture_path, ko_auto_track};
+use sublate_core::apple_convert::AppleConverter;
 use sublate_core::auth::CredentialChain;
 use sublate_core::file_name::OutputLocation;
 use sublate_core::languages::find_target;
@@ -17,6 +18,7 @@ use sublate_core::translate::claude::ClaudeTranslator;
 use sublate_core::toolchain::Toolchain;
 use sublate_core::translate::{BatchRequest, Translator};
 use sublate_core::update::{ActiveRelease, GitHubReleases, Installs, ReleaseFeed, Updater};
+use sublate_core::video_format::{StreamChoice, VideoFormat};
 use sublate_core::ytdlp::YtDlp;
 
 const KOREAN_VIDEO: &str = "https://www.youtube.com/watch?v=SrvYHXmiLAY";
@@ -80,7 +82,7 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
     let out = OutputLocation::new(dir.path().join("dir $HOME 100%"), "Save $HOME 100%?", &meta.id);
     let progress = std::sync::Mutex::new(Vec::new());
     let path = ytdlp
-        .download_video(&meta.url, &out, None, |p| progress.lock().unwrap().push(p))
+        .download_video(&meta.url, &out, &best(), |p| progress.lock().unwrap().push(p))
         .await
         .unwrap();
     let files: Vec<String> = std::fs::read_dir(out.dir())
@@ -102,6 +104,49 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
     println!("{streams}");
     assert!(streams.contains("attached_pic=1"), "cover art embedded");
     assert!(progress.last().is_some_and(|&p| p >= 99.0));
+}
+
+fn best() -> StreamChoice<'static> {
+    StreamChoice { format: VideoFormat::BestQuality, max_height: None, heights: &[] }
+}
+
+async fn streams_of(path: &Path) -> String {
+    let probe = tokio::process::Command::new(tools().ffmpeg_dir.join("ffprobe"))
+        .args(["-v", "error", "-of", "compact"])
+        .args(["-show_entries", "stream=codec_name,codec_tag_string:stream_disposition=attached_pic"])
+        .arg(path)
+        .output()
+        .await
+        .unwrap();
+    String::from_utf8_lossy(&probe.stdout).into_owned()
+}
+
+#[tokio::test]
+#[ignore]
+async fn a_downloaded_video_converts_to_hevc_and_aac_with_its_cover_art() {
+    let (ytdlp, _cache) = ytdlp().await;
+    let meta = ytdlp.fetch_metadata(SHORT_VIDEO).await.unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let out = OutputLocation::new(dir.path().to_path_buf(), &meta.title, &meta.id);
+    let path = ytdlp.download_video(&meta.url, &out, &best(), |_| {}).await.unwrap();
+    let downloaded = streams_of(&path).await;
+    println!("downloaded:\n{downloaded}");
+    assert!(!downloaded.contains("codec_name=hevc") && !downloaded.contains("codec_name=aac"), "nothing to convert");
+
+    let progress = std::sync::Mutex::new(Vec::new());
+    let converted = AppleConverter::new(&tools())
+        .convert(&path, |p| progress.lock().unwrap().push(p))
+        .await
+        .unwrap();
+
+    let streams = streams_of(&path).await;
+    println!("converted:\n{streams}");
+    assert!(converted);
+    assert!(streams.contains("codec_name=hevc|codec_tag_string=hvc1|disposition:attached_pic=0"), "HEVC video");
+    assert!(streams.contains("codec_name=aac|codec_tag_string=mp4a"), "AAC audio");
+    assert!(streams.contains("disposition:attached_pic=1"), "cover art kept");
+    assert_eq!(progress.into_inner().unwrap().last(), Some(&100.0));
+    assert_eq!(std::fs::read_dir(out.dir()).unwrap().count(), 1, "no temporary file left");
 }
 
 #[tokio::test]

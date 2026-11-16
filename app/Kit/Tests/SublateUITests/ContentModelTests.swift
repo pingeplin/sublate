@@ -86,7 +86,7 @@ struct ContentModelTests {
         let model = await fetched()
         model.sourceTrack = VideoMetadata.koreanAuto
         model.targetCode = "en"
-        let video = VideoRef(url: "https://example.com/watch?v=abc", id: "abc", title: "Title")
+        let video = VideoRef(url: "https://example.com/watch?v=abc", id: "abc", title: "Title", heights: [1080, 720, 360])
 
         await model.getContent()
 
@@ -115,7 +115,7 @@ struct ContentModelTests {
 
         await model.getContent()
 
-        #expect(model.progress == JobProgress(videoPercent: 100, subtitles: .translating(done: 2, total: 2)))
+        #expect(model.progress == JobProgress(video: VideoProgress(percent: 100), subtitles: .translating(done: 2, total: 2)))
     }
 
     @Test func subtitlesOnlySkipsTheVideo() async {
@@ -125,7 +125,7 @@ struct ContentModelTests {
         await model.getContent()
 
         #expect(backend.videoRequests.isEmpty)
-        #expect(model.progress?.videoPercent == nil)
+        #expect(model.progress?.video == nil)
         #expect(model.files.map(\.label) == ["Source subtitle (en)", "Translated subtitle (zh-TW, 2 cues)"])
     }
 
@@ -136,6 +136,35 @@ struct ContentModelTests {
         await model.getContent()
 
         #expect(backend.videoRequests.map(\.maxHeight) == [720])
+    }
+
+    @Test func getContentDownloadsTheChosenFormat() async {
+        let model = await fetched()
+        model.videoFormat = .appleCompatible
+
+        await model.getContent()
+
+        #expect(backend.videoRequests.map(\.format) == [.appleCompatible])
+    }
+
+    @Test func theVideoProgressFollowsTheConversionAfterTheDownload() async {
+        let model = await fetched()
+        model.content = .video
+        backend.videoProgress = [(.downloading, 100), (.converting, 40)]
+
+        await model.getContent()
+
+        #expect(model.progress?.video == VideoProgress(stage: .converting, percent: 40))
+        #expect(model.progress?.video?.label == "Converting video for Apple devices")
+    }
+
+    @Test func fetchKeepsTheChosenFormat() async {
+        let model = await fetched()
+        model.videoFormat = .appleCompatible
+
+        await model.fetchMetadata()
+
+        #expect(model.videoFormat == .appleCompatible)
     }
 
     @Test func fetchResetsTheResolutionToTheBest() async {
@@ -154,7 +183,7 @@ struct ContentModelTests {
         await model.getContent()
 
         #expect(backend.subtitleRequests.isEmpty)
-        #expect(model.progress == JobProgress(videoPercent: 100, subtitles: nil))
+        #expect(model.progress == JobProgress(video: VideoProgress(percent: 100), subtitles: nil))
         #expect(model.files.map(\.label) == ["Video"])
         #expect(model.status == .info("Done."))
     }

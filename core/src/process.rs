@@ -60,6 +60,12 @@ impl Running {
     }
 }
 
+/// The last `n` lines of `text` that are not blank, for an error message.
+pub fn tail(text: &str, n: usize) -> String {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    lines[lines.len().saturating_sub(n)..].join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -109,5 +115,10 @@ mod tests {
     #[tokio::test]
     async fn a_program_that_does_not_exist_cannot_start() {
         assert!(spawn(Command::new("/nonexistent/program"), None).is_err());
+    }
+
+    #[test]
+    fn tail_keeps_last_non_blank_lines() {
+        assert_eq!(tail("a\n\nb\nc\n", 2), "b\nc");
     }
 }

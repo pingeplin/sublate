@@ -11,6 +11,7 @@ use crate::process;
 use crate::subtitle_job::SubtitleSource;
 use crate::toolchain::Toolchain;
 use crate::update::ActiveRelease;
+use crate::video_format::StreamChoice;
 
 /// What Finder-launched apps get; fixed so tools on the user's own PATH never take part.
 const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -74,32 +75,26 @@ impl YtDlp {
         Ok(metadata)
     }
 
-    /// `max_height` caps the video at the tallest stream no taller than it, or the shortest
-    /// one when every stream is taller; `None` takes the best stream.
     pub async fn download_video(
         &self,
         url: &str,
         out: &OutputLocation,
-        max_height: Option<u32>,
+        choice: &StreamChoice<'_>,
         on_progress: impl Fn(f32),
     ) -> AppResult<PathBuf> {
         let progress = format!("download:{PROGRESS_TAG} %(progress._percent)s");
         let path = format!("after_move:{PATH_TAG} %(filepath)s");
         // Always an mp4 carrying the thumbnail as cover art, so Quick Look (Finder, open
         // dialogs) previews it and players show the cover. mp4 is forced because yt-dlp's
-        // `mp4/mkv` fallback picks mkv whenever the audio is Opus. Streams are copied at best
-        // quality within `max_height` rather than selected for H.264 (yt-dlp's `-t mp4`
-        // preset, capped near 1080p), so AV1/VP9 videos still need VLC or IINA instead of
-        // QuickTime.
+        // `mp4/mkv` fallback picks mkv whenever the audio is Opus. Streams are copied, never
+        // re-encoded.
         #[rustfmt::skip]
         let mut flags = vec![
             "--newline", "--progress", "--progress-template", &progress, "--print", &path,
             "--merge-output-format", "mp4", "--remux-video", "mp4",
             "--embed-thumbnail", "--convert-thumbnails", "jpg",
         ];
-        // A sort preference, not a `-f` filter: it still picks a stream when a fresh page
-        // extraction offers different heights. `height`, not `res`, which is the smaller side.
-        let sort = max_height.map(|h| format!("height:{h}"));
+        let sort = choice.sort();
         if let Some(sort) = &sort {
             flags.extend(["-S", sort]);
         }
@@ -178,7 +173,7 @@ impl YtDlp {
         if output.status.success() {
             Ok(output.stdout)
         } else {
-            Err(AppError::YtDlp(tail(&output.stderr, STDERR_TAIL_LINES)))
+            Err(AppError::YtDlp(process::tail(&output.stderr, STDERR_TAIL_LINES)))
         }
     }
 }
@@ -218,15 +213,11 @@ fn tagged<'a>(line: &'a str, tag: &str) -> Option<&'a str> {
     line.strip_prefix(tag)?.strip_prefix(' ')
 }
 
-fn tail(text: &str, n: usize) -> String {
-    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-    lines[lines.len().saturating_sub(n)..].join("\n")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::update::{Install, Version};
+    use crate::video_format::VideoFormat;
 
     fn install(version: &str) -> Install {
         Install::at(Version::parse(version).unwrap(), &Path::new("/support").join(version))
@@ -302,6 +293,10 @@ mod tests {
     }
 
     const URL: &str = "https://example.com/v";
+
+    fn best(max_height: Option<u32>) -> StreamChoice<'static> {
+        StreamChoice { format: VideoFormat::BestQuality, max_height, heights: &[1080, 720] }
+    }
     const INFO: &str = r#"{"id": "abc", "title": "Title"}"#;
 
     /// A stand-in release: a shell script run in place of yt-dlp.
@@ -389,7 +384,7 @@ mod tests {
         let out = OutputLocation::new(dir.path().join("new dir"), "Title", "abc");
         let progress = Mutex::new(Vec::new());
 
-        let path = ytdlp.download_video(URL, &out, None, |percent| progress.lock().unwrap().push(percent)).await.unwrap();
+        let path = ytdlp.download_video(URL, &out, &best(None), |percent| progress.lock().unwrap().push(percent)).await.unwrap();
 
         assert_eq!(path, Path::new("/out/Title [abc].mp4"));
         assert_eq!(progress.into_inner().unwrap(), [12.5, 100.0]);
@@ -397,24 +392,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_height_limit_becomes_a_sort_preference_and_no_limit_adds_none() {
+    async fn the_stream_choice_becomes_a_sort_preference_and_none_without_one() {
         let dir = tempfile::tempdir().unwrap();
         let ytdlp = scripted(dir.path(), r#"echo "$*" > args; echo 'CT_PATH /out/Title [abc].mp4'"#);
-        let args_for = |max_height| {
-            let out = OutputLocation::new(dir.path().join(format!("{max_height:?}")), "Title", "abc");
+        let args_for = |choice: StreamChoice<'static>, name: &str| {
+            let out = OutputLocation::new(dir.path().join(name), "Title", "abc");
             let ytdlp = &ytdlp;
             async move {
-                ytdlp.download_video(URL, &out, max_height, |_| {}).await.unwrap();
+                ytdlp.download_video(URL, &out, &choice, |_| {}).await.unwrap();
                 let args = std::fs::read_to_string(out.dir().join("args")).unwrap();
                 args.split_whitespace().map(String::from).collect::<Vec<_>>()
             }
         };
+        let apple = StreamChoice { format: VideoFormat::AppleCompatible, max_height: Some(720), heights: &[1080, 720] };
 
-        let limited = args_for(Some(720)).await;
-        let unlimited = args_for(None).await;
+        let limited = args_for(best(Some(720)), "limited").await;
+        let unlimited = args_for(best(None), "unlimited").await;
+        let apple = args_for(apple, "apple").await;
 
         assert!(limited.windows(2).any(|pair| pair == ["-S", "height:720"]), "{limited:?}");
         assert!(!unlimited.iter().any(|arg| arg == "-S"), "{unlimited:?}");
+        assert!(apple.windows(2).any(|pair| pair == ["-S", "lang,height:720,vcodec:h264,acodec:aac"]), "{apple:?}");
     }
 
     #[tokio::test]
@@ -477,10 +475,5 @@ mod tests {
     fn auto_tracks_need_the_auto_subs_flag() {
         assert_eq!(write_flag(TrackKind::Auto), "--write-auto-subs");
         assert_eq!(write_flag(TrackKind::Manual), "--write-subs");
-    }
-
-    #[test]
-    fn tail_keeps_last_non_blank_lines() {
-        assert_eq!(tail("a\n\nb\nc\n", 2), "b\nc");
     }
 }

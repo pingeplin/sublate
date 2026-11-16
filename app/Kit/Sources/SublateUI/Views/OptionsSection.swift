@@ -24,6 +24,14 @@ struct OptionsSection: View {
             }
             .disabled(!model.content.includesVideo)
 
+            Picker("Format", selection: $model.videoFormat) {
+                ForEach(VideoFormat.allCases, id: \.self) { format in
+                    Text(format.label).tag(format)
+                }
+            }
+            .help(model.videoFormat.help)
+            .disabled(!model.content.includesVideo)
+
             Picker("Source subtitle", selection: $model.sourceTrack) {
                 if tracks.isEmpty {
                     Text("No subtitles available").tag(SubtitleTrack?.none)

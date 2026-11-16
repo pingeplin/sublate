@@ -19,9 +19,9 @@ final class ProgressChannel<Value: Sendable>: Sendable {
     }
 }
 
-extension ProgressChannel: VideoProgressListener where Value == Double {
-    func onVideoProgress(percent: Float) {
-        send(Double(percent))
+extension ProgressChannel: VideoProgressListener where Value == VideoProgress {
+    func onVideoProgress(stage: VideoStage, percent: Float) {
+        send(VideoProgress(stage: stage, percent: Double(percent)))
     }
 }
 
