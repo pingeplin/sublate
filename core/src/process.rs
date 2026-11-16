@@ -5,6 +5,10 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 
+use crate::error::{AppError, AppResult};
+
+const STDERR_TAIL_LINES: usize = 8;
+
 pub struct Output {
     pub status: ExitStatus,
     pub stdout: String,
@@ -57,6 +61,24 @@ impl Running {
             stdout,
             stderr: stderr_task.await.unwrap_or_default(),
         })
+    }
+}
+
+/// Runs `command` to the end and hands back its standard output. A failure to start or a
+/// failed exit becomes `error`, holding the reason or the end of standard error.
+pub async fn run(
+    command: Command,
+    stdin: Option<Arc<str>>,
+    on_line: impl Fn(&str),
+    error: fn(String) -> AppError,
+) -> AppResult<String> {
+    let program = command.as_std().get_program().to_string_lossy().into_owned();
+    let running = spawn(command, stdin).map_err(|e| error(format!("cannot start {program}: {e}")))?;
+    let output = running.finish(on_line).await?;
+    if output.status.success() {
+        Ok(output.stdout)
+    } else {
+        Err(error(tail(&output.stderr, STDERR_TAIL_LINES)))
     }
 }
 

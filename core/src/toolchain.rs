@@ -18,11 +18,19 @@ impl Toolchain {
             ffmpeg_dir: dir.to_path_buf(),
             deno: dir.join("deno"),
         };
-        let required = [toolchain.deno.clone(), dir.join("ffmpeg"), dir.join("ffprobe")];
+        let required = [toolchain.deno.clone(), toolchain.ffmpeg(), toolchain.ffprobe()];
         match required.iter().find(|path| !path.is_file()) {
             Some(missing) => Err(AppError::Toolchain(format!("{} is missing", missing.display()))),
             None => Ok(toolchain),
         }
+    }
+
+    pub fn ffmpeg(&self) -> PathBuf {
+        self.ffmpeg_dir.join("ffmpeg")
+    }
+
+    pub fn ffprobe(&self) -> PathBuf {
+        self.ffmpeg_dir.join("ffprobe")
     }
 }
 

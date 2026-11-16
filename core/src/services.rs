@@ -146,7 +146,7 @@ impl AppState {
         let services = self.services().await?;
         let path = services
             .ytdlp
-            .download_video(url, out, choice, |percent| on_progress(VideoStage::Downloading, percent))
+            .download_video(url, out, &choice.request(), |percent| on_progress(VideoStage::Downloading, percent))
             .await?;
         if choice.format == VideoFormat::AppleCompatible {
             services
