@@ -1,3 +1,4 @@
+pub mod apple_convert;
 pub mod auth;
 mod disk;
 pub mod error;
@@ -14,6 +15,7 @@ pub mod subtitle_job;
 pub mod toolchain;
 pub mod translate;
 pub mod update;
+pub mod video_format;
 pub mod ytdlp;
 
 uniffi::setup_scaffolding!();

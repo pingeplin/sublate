@@ -8,6 +8,7 @@ use crate::metadata::{SubtitleTrack, VideoMetadata};
 use crate::services::{AppState, Locations};
 use crate::subtitle_job::SubtitleOutput;
 use crate::update::{archive_name, parse_version, AppArchive, AppRelease, Version};
+use crate::video_format::{StreamChoice, VideoFormat, VideoStage};
 
 /// Flattened to its message, so the UI handles one case whatever the cause.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -58,6 +59,8 @@ pub struct VideoRef {
     pub url: String,
     pub id: String,
     pub title: String,
+    /// Heights of the video streams on offer, largest first.
+    pub heights: Vec<u32>,
 }
 
 impl VideoRef {
@@ -116,7 +119,7 @@ impl From<AppRelease> for AppUpdate {
 /// Called from the runtime thread, never the UI thread.
 #[uniffi::export(foreign)]
 pub trait VideoProgressListener: Send + Sync {
-    fn on_video_progress(&self, percent: f32);
+    fn on_video_progress(&self, stage: VideoStage, percent: f32);
 }
 
 /// Called from the runtime thread, never the UI thread. `total` is `None` when the server does
@@ -211,18 +214,20 @@ impl Backend {
     }
 
     /// `max_height` caps the video height, typically at one of the video's `heights`; `None`
-    /// takes the best quality.
+    /// takes the best quality. `format` decides whether the download is converted afterwards.
     pub async fn download_video(
         &self,
         video: VideoRef,
         out_dir: String,
         max_height: Option<u32>,
+        format: VideoFormat,
         listener: Arc<dyn VideoProgressListener>,
     ) -> BackendResult<String> {
+        let choice = StreamChoice { format, max_height, heights: &video.heights };
         let path = self
             .state
-            .download_video(&video.url, &video.output(out_dir), max_height, |percent| {
-                listener.on_video_progress(percent)
+            .download_video(&video.url, &video.output(out_dir), &choice, |stage, percent| {
+                listener.on_video_progress(stage, percent)
             })
             .await?;
         Ok(path_string(&path))
@@ -290,6 +295,7 @@ mod tests {
             url: "https://example.com/v".into(),
             id: "id".into(),
             title: "Title".into(),
+            heights: vec![],
         };
         let track = SubtitleTrack {
             code: "en".into(),

@@ -8,6 +8,7 @@ protocol ContentBackend: Sendable {
         video: VideoRef,
         outDir: String,
         maxHeight: UInt32?,
+        format: VideoFormat,
         listener: VideoProgressListener
     ) async throws -> String
     func translateSubtitles(

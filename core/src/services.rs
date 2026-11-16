@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::OnceCell;
 
+use crate::apple_convert::AppleConverter;
 use crate::auth::CredentialChain;
 use crate::disk;
 use crate::error::{AppError, AppResult};
@@ -17,6 +18,7 @@ use crate::update::{
     newer_release, ActiveRelease, AppArchive, AppDownloader, AppRelease, GitHubAppReleases, GitHubReleases, Installs,
     Updater, Version,
 };
+use crate::video_format::{StreamChoice, VideoFormat, VideoStage};
 use crate::ytdlp::YtDlp;
 
 const INSTALLS_DIR: &str = "yt-dlp";
@@ -35,6 +37,7 @@ pub struct Locations {
 
 struct Services {
     ytdlp: YtDlp,
+    converter: AppleConverter,
     translator: Box<dyn Translator>,
     updater: Updater,
 }
@@ -47,6 +50,7 @@ impl Services {
         installs.retain(newest.as_ref().map(|install| &install.version));
         let active = Arc::new(ActiveRelease::new(newest));
         Ok(Self {
+            converter: AppleConverter::new(&tools),
             ytdlp: YtDlp::new(tools, Arc::clone(&active), &locations.cache),
             translator: Box::new(ClaudeTranslator::new(Box::new(credentials))?),
             updater: Updater::new(
@@ -136,10 +140,21 @@ impl AppState {
         &self,
         url: &str,
         out: &OutputLocation,
-        max_height: Option<u32>,
-        on_progress: impl Fn(f32),
+        choice: &StreamChoice<'_>,
+        on_progress: impl Fn(VideoStage, f32),
     ) -> AppResult<PathBuf> {
-        self.services().await?.ytdlp.download_video(url, out, max_height, on_progress).await
+        let services = self.services().await?;
+        let path = services
+            .ytdlp
+            .download_video(url, out, choice, |percent| on_progress(VideoStage::Downloading, percent))
+            .await?;
+        if choice.format == VideoFormat::AppleCompatible {
+            services
+                .converter
+                .convert(&path, |percent| on_progress(VideoStage::Converting, percent))
+                .await?;
+        }
+        Ok(path)
     }
 
     /// Downloads a subtitle track and translates it into the language with code `target`. The

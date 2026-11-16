@@ -1,4 +1,5 @@
 import Foundation
+import SublateCore
 
 enum Status: Equatable {
     case idle
@@ -24,6 +25,26 @@ enum ContentChoice: CaseIterable, Hashable {
     }
 }
 
+extension VideoFormat: CaseIterable {
+    public static let allCases: [VideoFormat] = [.bestQuality, .appleCompatible]
+
+    var label: String {
+        switch self {
+        case .bestQuality: "Best quality"
+        case .appleCompatible: "Apple devices"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .bestQuality: "As downloaded, often AV1 or VP9, which the Photos app and QuickTime cannot open."
+        case .appleCompatible:
+            "What the Photos app accepts. Up to 1080p, YouTube's H.264 with AAC is downloaded as is; "
+                + "taller videos are converted after the download to HEVC with AAC."
+        }
+    }
+}
+
 enum SubtitleProgress: Equatable, Sendable {
     case unavailable
     case downloading
@@ -43,9 +64,21 @@ enum SubtitleProgress: Equatable, Sendable {
     }
 }
 
+struct VideoProgress: Equatable, Sendable {
+    var stage = VideoStage.downloading
+    var percent: Double
+
+    var label: String {
+        switch stage {
+        case .downloading: "Video"
+        case .converting: "Converting video for Apple devices"
+        }
+    }
+}
+
 struct JobProgress: Equatable {
     /// `nil` when the video isn't part of the job.
-    var videoPercent: Double?
+    var video: VideoProgress?
     /// `nil` when the subtitles aren't part of the job.
     var subtitles: SubtitleProgress?
 }

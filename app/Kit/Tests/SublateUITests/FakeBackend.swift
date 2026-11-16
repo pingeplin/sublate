@@ -24,7 +24,7 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     var subtitles: Result<SubtitleFiles, BackendError> = .success(
         SubtitleFiles(sourcePath: "/out/Title [abc].en.srt", translatedPath: "/out/Title [abc].zh-TW.srt", cueCount: 2)
     )
-    var videoProgress: [Float] = [12.5, 100]
+    var videoProgress: [(stage: VideoStage, percent: Float)] = [(.downloading, 12.5), (.downloading, 100)]
     var translationProgress: [(done: UInt64, total: UInt64)] = [(1, 2), (2, 2)]
 
     private(set) var apiKey: String?
@@ -41,6 +41,7 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
         let video: VideoRef
         let outDir: String
         var maxHeight: UInt32?
+        var format = VideoFormat.bestQuality
     }
 
     struct SubtitleRequest: Equatable {
@@ -109,10 +110,13 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
         video: VideoRef,
         outDir: String,
         maxHeight: UInt32?,
+        format: VideoFormat,
         listener: VideoProgressListener
     ) async throws -> String {
-        videoRequests.append(VideoRequest(video: video, outDir: outDir, maxHeight: maxHeight))
-        videoProgress.forEach(listener.onVideoProgress)
+        videoRequests.append(VideoRequest(video: video, outDir: outDir, maxHeight: maxHeight, format: format))
+        for report in videoProgress {
+            listener.onVideoProgress(stage: report.stage, percent: report.percent)
+        }
         return try self.video.get()
     }
 
