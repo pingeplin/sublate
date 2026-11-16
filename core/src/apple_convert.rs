@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -13,7 +13,6 @@ const ACCEPTED_AUDIO: &str = "aac";
 /// Fixed and short: the folder belongs to one video, and a name built from the title could
 /// pass the 255-byte limit.
 const TEMP_NAME: &str = ".converting.mp4";
-const STDERR_TAIL_LINES: usize = 8;
 
 /// Converts a downloaded video into what the Photos app accepts, on the Mac's media engine.
 pub struct AppleConverter {
@@ -24,54 +23,47 @@ pub struct AppleConverter {
 impl AppleConverter {
     pub fn new(tools: &Toolchain) -> Self {
         Self {
-            ffmpeg: tools.ffmpeg_dir.join("ffmpeg"),
-            ffprobe: tools.ffmpeg_dir.join("ffprobe"),
+            ffmpeg: tools.ffmpeg(),
+            ffprobe: tools.ffprobe(),
         }
     }
 
-    /// Replaces `video` with a converted copy when one of its streams needs it, and tells
-    /// whether it did. `on_progress` gets the percent converted. On failure or cancellation
-    /// `video` stays as downloaded.
-    pub async fn convert(&self, video: &Path, on_progress: impl Fn(f32)) -> AppResult<bool> {
+    /// Replaces `video` with a converted copy when one of its streams needs it. `on_progress`
+    /// gets the percent converted. On failure or cancellation `video` stays as downloaded.
+    pub async fn convert(&self, video: &Path, on_progress: impl Fn(f32)) -> AppResult<()> {
         let probe = self.probe(video).await?;
         let Some(plan) = Plan::for_streams(&probe.streams) else {
-            return Ok(false);
+            return Ok(());
         };
         let temp = TempFile(video.with_file_name(TEMP_NAME));
-        let mut command = Command::new(&self.ffmpeg);
-        command.args(plan.args(video, &temp.0));
-        let running = process::spawn(command, None)
-            .map_err(|e| AppError::Convert(format!("cannot start {}: {e}", self.ffmpeg.display())))?;
         let duration = probe.duration();
-        let output = running
-            .finish(|line| {
-                if let Some(percent) = progress_percent(line, duration) {
-                    on_progress(percent);
-                }
-            })
-            .await?;
-        if !output.status.success() {
-            return Err(AppError::Convert(process::tail(&output.stderr, STDERR_TAIL_LINES)));
-        }
-        tokio::fs::rename(&temp.0, video).await?;
-        Ok(true)
+        let on_line = |line: &str| {
+            if let Some(percent) = progress_percent(line, duration) {
+                on_progress(percent);
+            }
+        };
+        run(&self.ffmpeg, plan.args(video, &temp.0), on_line).await?;
+        Ok(tokio::fs::rename(&temp.0, video).await?)
     }
 
     async fn probe(&self, video: &Path) -> AppResult<Probe> {
-        let mut command = Command::new(&self.ffprobe);
         #[rustfmt::skip]
-        command.args([
+        let args = [
             "-v", "error", "-of", "json",
             "-show_entries", "stream=codec_type,codec_name:stream_disposition=attached_pic:format=duration",
-        ]).arg(video);
-        let running = process::spawn(command, None)
-            .map_err(|e| AppError::Convert(format!("cannot start {}: {e}", self.ffprobe.display())))?;
-        let output = running.finish(|_| {}).await?;
-        if !output.status.success() {
-            return Err(AppError::Convert(process::tail(&output.stderr, STDERR_TAIL_LINES)));
-        }
-        Ok(serde_json::from_str(&output.stdout)?)
+        ].map(OsStr::new).into_iter().chain([video.as_os_str()]);
+        Ok(serde_json::from_str(&run(&self.ffprobe, args, |_| {}).await?)?)
     }
+}
+
+async fn run(
+    program: &Path,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+    on_line: impl Fn(&str),
+) -> AppResult<String> {
+    let mut command = Command::new(program);
+    command.args(args);
+    process::run(command, None, on_line, AppError::Convert).await
 }
 
 /// Deleted when dropped, so a failed or cancelled conversion leaves nothing behind.
@@ -146,20 +138,22 @@ impl Plan {
     /// HEVC on VideoToolbox: `-q:v 65` with `-prio_speed` kept SSIM at 0.991 against a 4K AV1
     /// source and ran 1.6x real time on an M1 Pro. `:V` leaves the cover art out, `hvc1` is the
     /// tag Apple players require, and a 10-bit HDR source stays Main 10 with its colour tags.
-    fn args(&self, input: &Path, output: &Path) -> Vec<OsString> {
-        let mut args: Vec<OsString> = ["-nostdin", "-v", "error", "-y", "-i"].map(OsString::from).to_vec();
-        args.push(input.into());
-        args.extend(["-map", "0", "-c", "copy"].map(OsString::from));
+    fn args<'a>(&self, input: &'a Path, output: &'a Path) -> Vec<&'a OsStr> {
+        let mut flags = vec!["-map", "0", "-c", "copy"];
         if self.video {
-            #[rustfmt::skip]
-            args.extend(["-c:V", "hevc_videotoolbox", "-q:v", "65", "-prio_speed", "1", "-tag:V", "hvc1"].map(OsString::from));
+            flags.extend(["-c:V", "hevc_videotoolbox", "-q:v", "65", "-prio_speed", "1", "-tag:V", "hvc1"]);
         }
         if self.audio {
-            args.extend(["-c:a", "aac_at", "-b:a", "192k"].map(OsString::from));
+            flags.extend(["-c:a", "aac_at", "-b:a", "192k"]);
         }
-        args.extend(["-movflags", "+faststart", "-progress", "pipe:1", "-nostats"].map(OsString::from));
-        args.push(output.into());
-        args
+        flags.extend(["-progress", "pipe:1", "-nostats"]);
+        ["-nostdin", "-v", "error", "-y", "-i"]
+            .map(OsStr::new)
+            .into_iter()
+            .chain([input.as_os_str()])
+            .chain(flags.into_iter().map(OsStr::new))
+            .chain([output.as_os_str()])
+            .collect()
     }
 }
 
@@ -215,7 +209,7 @@ mod tests {
         let args = |plan: Plan| {
             plan.args(Path::new("in.mp4"), Path::new(".converting.mp4"))
                 .into_iter()
-                .map(|arg| arg.into_string().unwrap())
+                .map(|arg| arg.to_str().unwrap())
                 .collect::<Vec<_>>()
                 .join(" ")
         };
@@ -224,12 +218,12 @@ mod tests {
             args(Plan { video: true, audio: true }),
             "-nostdin -v error -y -i in.mp4 -map 0 -c copy \
              -c:V hevc_videotoolbox -q:v 65 -prio_speed 1 -tag:V hvc1 -c:a aac_at -b:a 192k \
-             -movflags +faststart -progress pipe:1 -nostats .converting.mp4"
+             -progress pipe:1 -nostats .converting.mp4"
         );
         assert_eq!(
             args(Plan { video: false, audio: true }),
             "-nostdin -v error -y -i in.mp4 -map 0 -c copy -c:a aac_at -b:a 192k \
-             -movflags +faststart -progress pipe:1 -nostats .converting.mp4"
+             -progress pipe:1 -nostats .converting.mp4"
         );
     }
 
@@ -274,9 +268,8 @@ mod tests {
         let video = downloaded(dir.path());
         let progress = Mutex::new(Vec::new());
 
-        let converted = converter.convert(&video, |p| progress.lock().unwrap().push(p)).await.unwrap();
+        converter.convert(&video, |p| progress.lock().unwrap().push(p)).await.unwrap();
 
-        assert!(converted);
         assert_eq!(std::fs::read_to_string(&video).unwrap(), "converted\n");
         assert_eq!(progress.into_inner().unwrap(), [50.0, 100.0]);
         assert_eq!(std::fs::read_dir(video.parent().unwrap()).unwrap().count(), 1);
@@ -288,9 +281,8 @@ mod tests {
         let converter = converter(dir.path(), &probe_json("h264", "aac"), "");
         let video = downloaded(dir.path());
 
-        let converted = converter.convert(&video, |_| {}).await.unwrap();
+        converter.convert(&video, |_| {}).await.unwrap();
 
-        assert!(!converted);
         assert_eq!(std::fs::read_to_string(&video).unwrap(), "downloaded");
         assert!(!dir.path().join("ran").exists());
     }

@@ -1,3 +1,5 @@
+use crate::ytdlp::StreamRequest;
+
 /// YouTube offers H.264 up to this height; taller videos come only as VP9 or AV1.
 const H264_MAX_HEIGHT: u32 = 1080;
 
@@ -29,25 +31,15 @@ pub struct StreamChoice<'a> {
 }
 
 impl StreamChoice<'_> {
-    /// yt-dlp's `-S` value: a preference, not a `-f` filter, so it still picks a stream when a
-    /// fresh page extraction offers different heights. `height`, not `res`, which is the
-    /// smaller side.
-    pub(crate) fn sort(&self) -> Option<String> {
-        let cap = self.max_height.map(|h| format!("height:{h}"));
+    pub fn request(&self) -> StreamRequest {
         let short = self.chosen_height().is_some_and(|h| h <= H264_MAX_HEIGHT);
-        match self.format {
-            // The height comes before the codec, so H.264 only wins over VP9 or AV1 of the
-            // same height, and before `acodec`, so a small muxed H.264+AAC stream never wins
-            // over a taller video-only one. `lang` first keeps the original audio language.
-            VideoFormat::AppleCompatible if short => {
-                let height = cap.unwrap_or_else(|| "height".into());
-                Some(format!("lang,{height},vcodec:h264,acodec:aac"))
-            }
-            _ => cap,
+        StreamRequest {
+            max_height: self.max_height,
+            prefer_h264_aac: self.format == VideoFormat::AppleCompatible && short,
         }
     }
 
-    /// The height the `height` sort lands on.
+    /// The height the download lands on.
     fn chosen_height(&self) -> Option<u32> {
         let Some(cap) = self.max_height else {
             return self.heights.iter().copied().max();
@@ -63,54 +55,49 @@ mod tests {
 
     const HEIGHTS: &[u32] = &[2160, 1080, 720, 360];
 
-    fn sort(format: VideoFormat, max_height: Option<u32>, heights: &[u32]) -> Option<String> {
-        StreamChoice { format, max_height, heights }.sort()
+    fn prefers_h264(format: VideoFormat, max_height: Option<u32>, heights: &[u32]) -> bool {
+        StreamChoice { format, max_height, heights }.request().prefer_h264_aac
     }
 
     #[test]
-    fn best_quality_sorts_only_by_the_height_cap() {
-        assert_eq!(sort(VideoFormat::BestQuality, Some(720), HEIGHTS).as_deref(), Some("height:720"));
-        assert_eq!(sort(VideoFormat::BestQuality, None, &[720]), None);
+    fn the_request_keeps_the_height_cap() {
+        let choice = StreamChoice { format: VideoFormat::AppleCompatible, max_height: Some(720), heights: HEIGHTS };
+
+        assert_eq!(choice.request(), StreamRequest { max_height: Some(720), prefer_h264_aac: true });
     }
 
     #[test]
-    fn apple_devices_prefer_h264_and_aac_up_to_1080p() {
-        assert_eq!(
-            sort(VideoFormat::AppleCompatible, Some(1080), HEIGHTS).as_deref(),
-            Some("lang,height:1080,vcodec:h264,acodec:aac")
-        );
-        assert_eq!(
-            sort(VideoFormat::AppleCompatible, None, &[1080, 720]).as_deref(),
-            Some("lang,height,vcodec:h264,acodec:aac")
-        );
+    fn best_quality_never_prefers_h264() {
+        assert!(!prefers_h264(VideoFormat::BestQuality, Some(720), HEIGHTS));
+        assert!(!prefers_h264(VideoFormat::BestQuality, None, &[720]));
+    }
+
+    #[test]
+    fn apple_devices_prefer_h264_up_to_1080p() {
+        assert!(prefers_h264(VideoFormat::AppleCompatible, Some(1080), HEIGHTS));
+        assert!(prefers_h264(VideoFormat::AppleCompatible, None, &[1080, 720]));
     }
 
     #[test]
     fn apple_devices_download_taller_videos_like_best_quality() {
-        assert_eq!(sort(VideoFormat::AppleCompatible, Some(2160), HEIGHTS).as_deref(), Some("height:2160"));
-        assert_eq!(sort(VideoFormat::AppleCompatible, None, HEIGHTS), None);
-        assert_eq!(sort(VideoFormat::AppleCompatible, Some(1440), &[2160, 1440]).as_deref(), Some("height:1440"));
+        assert!(!prefers_h264(VideoFormat::AppleCompatible, Some(2160), HEIGHTS));
+        assert!(!prefers_h264(VideoFormat::AppleCompatible, None, HEIGHTS));
+        assert!(!prefers_h264(VideoFormat::AppleCompatible, Some(1440), &[2160, 1440]));
     }
 
     #[test]
     fn a_cap_between_heights_lands_on_the_shorter_stream() {
-        assert_eq!(
-            sort(VideoFormat::AppleCompatible, Some(1440), HEIGHTS).as_deref(),
-            Some("lang,height:1440,vcodec:h264,acodec:aac")
-        );
+        assert!(prefers_h264(VideoFormat::AppleCompatible, Some(1440), HEIGHTS));
     }
 
     #[test]
     fn a_cap_below_every_stream_lands_on_the_shortest() {
-        assert_eq!(
-            sort(VideoFormat::AppleCompatible, Some(240), HEIGHTS).as_deref(),
-            Some("lang,height:240,vcodec:h264,acodec:aac")
-        );
-        assert_eq!(sort(VideoFormat::AppleCompatible, Some(240), &[2160]).as_deref(), Some("height:240"));
+        assert!(prefers_h264(VideoFormat::AppleCompatible, Some(240), HEIGHTS));
+        assert!(!prefers_h264(VideoFormat::AppleCompatible, Some(240), &[2160]));
     }
 
     #[test]
     fn unknown_heights_download_like_best_quality() {
-        assert_eq!(sort(VideoFormat::AppleCompatible, None, &[]), None);
+        assert!(!prefers_h264(VideoFormat::AppleCompatible, None, &[]));
     }
 }

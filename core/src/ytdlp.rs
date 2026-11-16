@@ -11,13 +11,37 @@ use crate::process;
 use crate::subtitle_job::SubtitleSource;
 use crate::toolchain::Toolchain;
 use crate::update::ActiveRelease;
-use crate::video_format::StreamChoice;
 
 /// What Finder-launched apps get; fixed so tools on the user's own PATH never take part.
 const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
-const STDERR_TAIL_LINES: usize = 8;
 const PROGRESS_TAG: &str = "CT_PROGRESS";
 const PATH_TAG: &str = "CT_PATH";
+
+/// Which streams a video download prefers.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct StreamRequest {
+    /// Caps the video at the tallest stream no taller than it, or the shortest one when every
+    /// stream is taller; `None` takes the tallest.
+    pub max_height: Option<u32>,
+    /// Takes H.264 with AAC over other codecs of the same height.
+    pub prefer_h264_aac: bool,
+}
+
+impl StreamRequest {
+    /// `-S` value: a preference, not a `-f` filter, so it still picks a stream when a fresh
+    /// page extraction offers different heights. `height`, not `res`, which is the smaller side.
+    fn sort(&self) -> Option<String> {
+        let cap = self.max_height.map(|h| format!("height:{h}"));
+        if !self.prefer_h264_aac {
+            return cap;
+        }
+        // The height comes before the codec, so H.264 only wins over VP9 or AV1 of the same
+        // height, and before `acodec`, so a small muxed H.264+AAC stream never wins over a
+        // taller video-only one. `lang` first keeps the original audio language.
+        let height = cap.unwrap_or_else(|| "height".into());
+        Some(format!("lang,{height},vcodec:h264,acodec:aac"))
+    }
+}
 
 pub struct YtDlp {
     /// Read at each run, so a release the updater switches to is used from the next run on.
@@ -79,7 +103,7 @@ impl YtDlp {
         &self,
         url: &str,
         out: &OutputLocation,
-        choice: &StreamChoice<'_>,
+        request: &StreamRequest,
         on_progress: impl Fn(f32),
     ) -> AppResult<PathBuf> {
         let progress = format!("download:{PROGRESS_TAG} %(progress._percent)s");
@@ -94,7 +118,7 @@ impl YtDlp {
             "--merge-output-format", "mp4", "--remux-video", "mp4",
             "--embed-thumbnail", "--convert-thumbnails", "jpg",
         ];
-        let sort = choice.sort();
+        let sort = request.sort();
         if let Some(sort) = &sort {
             flags.extend(["-S", sort]);
         }
@@ -167,14 +191,7 @@ impl YtDlp {
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
-        let running = process::spawn(command, stdin)
-            .map_err(|e| AppError::YtDlp(format!("cannot start {}: {e}", program.display())))?;
-        let output = running.finish(on_line).await?;
-        if output.status.success() {
-            Ok(output.stdout)
-        } else {
-            Err(AppError::YtDlp(process::tail(&output.stderr, STDERR_TAIL_LINES)))
-        }
+        process::run(command, stdin, on_line, AppError::YtDlp).await
     }
 }
 
@@ -217,7 +234,6 @@ fn tagged<'a>(line: &'a str, tag: &str) -> Option<&'a str> {
 mod tests {
     use super::*;
     use crate::update::{Install, Version};
-    use crate::video_format::VideoFormat;
 
     fn install(version: &str) -> Install {
         Install::at(Version::parse(version).unwrap(), &Path::new("/support").join(version))
@@ -293,10 +309,6 @@ mod tests {
     }
 
     const URL: &str = "https://example.com/v";
-
-    fn best(max_height: Option<u32>) -> StreamChoice<'static> {
-        StreamChoice { format: VideoFormat::BestQuality, max_height, heights: &[1080, 720] }
-    }
     const INFO: &str = r#"{"id": "abc", "title": "Title"}"#;
 
     /// A stand-in release: a shell script run in place of yt-dlp.
@@ -384,7 +396,7 @@ mod tests {
         let out = OutputLocation::new(dir.path().join("new dir"), "Title", "abc");
         let progress = Mutex::new(Vec::new());
 
-        let path = ytdlp.download_video(URL, &out, &best(None), |percent| progress.lock().unwrap().push(percent)).await.unwrap();
+        let path = ytdlp.download_video(URL, &out, &StreamRequest::default(), |percent| progress.lock().unwrap().push(percent)).await.unwrap();
 
         assert_eq!(path, Path::new("/out/Title [abc].mp4"));
         assert_eq!(progress.into_inner().unwrap(), [12.5, 100.0]);
@@ -392,27 +404,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_stream_choice_becomes_a_sort_preference_and_none_without_one() {
+    async fn a_height_limit_becomes_a_sort_preference_and_no_limit_adds_none() {
         let dir = tempfile::tempdir().unwrap();
         let ytdlp = scripted(dir.path(), r#"echo "$*" > args; echo 'CT_PATH /out/Title [abc].mp4'"#);
-        let args_for = |choice: StreamChoice<'static>, name: &str| {
-            let out = OutputLocation::new(dir.path().join(name), "Title", "abc");
+        let args_for = |max_height| {
+            let out = OutputLocation::new(dir.path().join(format!("{max_height:?}")), "Title", "abc");
             let ytdlp = &ytdlp;
             async move {
-                ytdlp.download_video(URL, &out, &choice, |_| {}).await.unwrap();
+                let request = StreamRequest { max_height, prefer_h264_aac: false };
+                ytdlp.download_video(URL, &out, &request, |_| {}).await.unwrap();
                 let args = std::fs::read_to_string(out.dir().join("args")).unwrap();
                 args.split_whitespace().map(String::from).collect::<Vec<_>>()
             }
         };
-        let apple = StreamChoice { format: VideoFormat::AppleCompatible, max_height: Some(720), heights: &[1080, 720] };
 
-        let limited = args_for(best(Some(720)), "limited").await;
-        let unlimited = args_for(best(None), "unlimited").await;
-        let apple = args_for(apple, "apple").await;
+        let limited = args_for(Some(720)).await;
+        let unlimited = args_for(None).await;
 
         assert!(limited.windows(2).any(|pair| pair == ["-S", "height:720"]), "{limited:?}");
         assert!(!unlimited.iter().any(|arg| arg == "-S"), "{unlimited:?}");
-        assert!(apple.windows(2).any(|pair| pair == ["-S", "lang,height:720,vcodec:h264,acodec:aac"]), "{apple:?}");
+    }
+
+    #[test]
+    fn h264_is_preferred_after_the_height_and_before_the_audio_codec() {
+        let sort = |max_height| StreamRequest { max_height, prefer_h264_aac: true }.sort();
+
+        assert_eq!(sort(Some(720)).as_deref(), Some("lang,height:720,vcodec:h264,acodec:aac"));
+        assert_eq!(sort(None).as_deref(), Some("lang,height,vcodec:h264,acodec:aac"));
     }
 
     #[tokio::test]
