@@ -12,7 +12,7 @@ struct VideoProgressDisplayTests {
     }
 
     private func shown(_ steps: (VideoStep, StepState)..., jobRunning: Bool = true) -> VideoProgressDisplay {
-        VideoProgressDisplay(VideoProgress(steps: steps.map { VideoStepProgress(step: $0, state: $1) }), jobRunning: jobRunning)
+        VideoProgressDisplay(.steps(steps), jobRunning: jobRunning)
     }
 
     @Test func aRunningStreamShowsItsPositionPercentAndSizes() {

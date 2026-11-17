@@ -423,7 +423,6 @@ mod tests {
 
         let path = ytdlp.download_video(URL, &out, &StreamRequest::default(), |e| events.lock().unwrap().push(e)).await.unwrap();
 
-        let stream = |id: &str, finished, percent, bytes| DownloadEvent::Stream { format_id: id.into(), finished, percent, bytes };
         assert_eq!(path, Path::new("/out/Title [abc].mp4"));
         assert_eq!(
             events.into_inner().unwrap(),
@@ -456,12 +455,16 @@ mod tests {
         );
     }
 
+    fn stream(id: &str, finished: bool, percent: Option<f32>, bytes: Option<ByteProgress>) -> DownloadEvent {
+        DownloadEvent::Stream { format_id: id.into(), finished, percent, bytes }
+    }
+
     #[test]
     fn a_download_line_prefers_the_size_over_the_estimate() {
         let event = download_event("CT_PROGRESS 18 downloading 30.0 1100000 3600000 4000000");
 
         let bytes = ByteProgress { done: 1_100_000, total: Some(3_600_000) };
-        assert_eq!(event, Some(DownloadEvent::Stream { format_id: "18".into(), finished: false, percent: Some(30.0), bytes: Some(bytes) }));
+        assert_eq!(event, Some(stream("18", false, Some(30.0), Some(bytes))));
     }
 
     #[test]
@@ -474,7 +477,7 @@ mod tests {
         let event = download_event("CT_PROGRESS 18 downloading 30.0 1100000 NA 3600000.5");
 
         let bytes = ByteProgress { done: 1_100_000, total: Some(3_600_000) };
-        assert_eq!(event, Some(DownloadEvent::Stream { format_id: "18".into(), finished: false, percent: Some(30.0), bytes: Some(bytes) }));
+        assert_eq!(event, Some(stream("18", false, Some(30.0), Some(bytes))));
     }
 
     #[test]
@@ -483,8 +486,8 @@ mod tests {
         let no_percent = download_event("CT_PROGRESS 18 downloading NA 1100000 3600000 NA");
 
         let with_total = |total| Some(ByteProgress { done: 1_100_000, total });
-        assert_eq!(no_total, Some(DownloadEvent::Stream { format_id: "18".into(), finished: false, percent: Some(30.0), bytes: with_total(None) }));
-        assert_eq!(no_percent, Some(DownloadEvent::Stream { format_id: "18".into(), finished: false, percent: None, bytes: with_total(Some(3_600_000)) }));
+        assert_eq!(no_total, Some(stream("18", false, Some(30.0), with_total(None))));
+        assert_eq!(no_percent, Some(stream("18", false, None, with_total(Some(3_600_000)))));
     }
 
     #[tokio::test]

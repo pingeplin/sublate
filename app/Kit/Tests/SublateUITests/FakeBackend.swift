@@ -172,6 +172,10 @@ extension VideoMetadata {
 
 extension VideoProgress {
     static func steps(_ steps: (VideoStep, StepState)...) -> VideoProgress {
+        .steps(steps)
+    }
+
+    static func steps(_ steps: [(VideoStep, StepState)]) -> VideoProgress {
         VideoProgress(steps: steps.map { VideoStepProgress(step: $0, state: $1) })
     }
 

@@ -177,20 +177,20 @@ pub async fn track_video(
     on_progress: impl Fn(VideoProgress) + Send,
 ) -> AppResult<PathBuf> {
     let tracker = Mutex::new(VideoTracker::new(converts, on_progress));
-    let track = |change: &dyn Fn(&mut VideoTracker<_>)| change(&mut tracker.lock().expect("video tracker lock"));
+    let track = || tracker.lock().expect("video tracker lock");
     let result = async {
-        let path = work.download(&|event| track(&|t| t.download(event.clone()))).await?;
-        track(&|t| t.download_finished());
+        let path = work.download(&|event| track().download(event)).await?;
+        track().download_finished();
         if converts {
-            track(&|t| t.converting(None));
-            let converted = work.convert(&path, &|percent| track(&|t| t.converting(Some(percent)))).await?;
-            track(&|t| t.conversion_finished(converted));
+            track().converting(None);
+            let converted = work.convert(&path, &|percent| track().converting(Some(percent))).await?;
+            track().conversion_finished(converted);
         }
         Ok(path)
     }
     .await;
     if result.is_err() {
-        track(&|t| t.fail());
+        track().fail();
     }
     result
 }
