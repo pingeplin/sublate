@@ -28,12 +28,13 @@ impl AppleConverter {
         }
     }
 
-    /// Replaces `video` with a converted copy when one of its streams needs it. `on_progress`
-    /// gets the percent converted. On failure or cancellation `video` stays as downloaded.
-    pub async fn convert(&self, video: &Path, on_progress: impl Fn(f32)) -> AppResult<()> {
+    /// Replaces `video` with a converted copy when one of its streams needs it, and tells
+    /// whether it did. `on_progress` gets the percent converted. On failure or cancellation
+    /// `video` stays as downloaded.
+    pub async fn convert(&self, video: &Path, on_progress: impl Fn(f32)) -> AppResult<bool> {
         let probe = self.probe(video).await?;
         let Some(plan) = Plan::for_streams(&probe.streams) else {
-            return Ok(());
+            return Ok(false);
         };
         let temp = TempFile(video.with_file_name(TEMP_NAME));
         let duration = probe.duration();
@@ -43,7 +44,8 @@ impl AppleConverter {
             }
         };
         run(&self.ffmpeg, plan.args(video, &temp.0), on_line).await?;
-        Ok(tokio::fs::rename(&temp.0, video).await?)
+        tokio::fs::rename(&temp.0, video).await?;
+        Ok(true)
     }
 
     async fn probe(&self, video: &Path) -> AppResult<Probe> {
@@ -268,8 +270,9 @@ mod tests {
         let video = downloaded(dir.path());
         let progress = Mutex::new(Vec::new());
 
-        converter.convert(&video, |p| progress.lock().unwrap().push(p)).await.unwrap();
+        let converted = converter.convert(&video, |p| progress.lock().unwrap().push(p)).await.unwrap();
 
+        assert!(converted);
         assert_eq!(std::fs::read_to_string(&video).unwrap(), "converted\n");
         assert_eq!(progress.into_inner().unwrap(), [50.0, 100.0]);
         assert_eq!(std::fs::read_dir(video.parent().unwrap()).unwrap().count(), 1);
@@ -281,8 +284,9 @@ mod tests {
         let converter = converter(dir.path(), &probe_json("h264", "aac"), "");
         let video = downloaded(dir.path());
 
-        converter.convert(&video, |_| {}).await.unwrap();
+        let converted = converter.convert(&video, |_| {}).await.unwrap();
 
+        assert!(!converted);
         assert_eq!(std::fs::read_to_string(&video).unwrap(), "downloaded");
         assert!(!dir.path().join("ran").exists());
     }

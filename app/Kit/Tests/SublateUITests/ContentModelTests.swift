@@ -115,7 +115,7 @@ struct ContentModelTests {
 
         await model.getContent()
 
-        #expect(model.progress == JobProgress(video: VideoProgress(percent: 100), subtitles: .translating(done: 2, total: 2)))
+        #expect(model.progress == JobProgress(video: .downloaded, subtitles: .translating(done: 2, total: 2)))
     }
 
     @Test func subtitlesOnlySkipsTheVideo() async {
@@ -147,15 +147,80 @@ struct ContentModelTests {
         #expect(backend.videoRequests.map(\.format) == [.appleCompatible])
     }
 
-    @Test func theVideoProgressFollowsTheConversionAfterTheDownload() async {
+    @Test func theVideoRowShowsTheLastSnapshotTheBackendSent() async {
         let model = await fetched()
         model.content = .video
-        backend.videoProgress = [(.downloading, 100), (.converting, 40)]
+        let converting = VideoProgress.steps((.videoWithAudio, .done), (.finishing, .done), (.converting, .running(percent: 40, bytes: nil)))
+        backend.videoProgress = [.downloading, converting]
 
         await model.getContent()
 
-        #expect(model.progress?.video == VideoProgress(stage: .converting, percent: 40))
-        #expect(model.progress?.video?.label == "Converting video for Apple devices")
+        #expect(model.progress?.video == converting)
+    }
+
+    @Test func theVideoRowIsPreparingUntilTheBackendNamesTheSteps() async {
+        let model = await fetched()
+        model.content = .video
+        backend.videoProgress = []
+        var shown: VideoProgressDisplay?
+        backend.duringVideoDownload = { [model] in
+            shown = model.videoDisplay
+        }
+
+        await model.getContent()
+
+        #expect(shown?.title == "Preparing…")
+        #expect(shown?.fraction == nil)
+    }
+
+    @Test func aVideoThatFailsBeforeItsStepsAreKnownShowsStoppedWhileTheSubtitlesGoOn() async {
+        let model = await fetched()
+        backend.videoProgress = []
+        backend.video = .failure(.Failed(message: "Unsupported URL"))
+        var shown: VideoProgressDisplay?
+        var jobBusy = false
+        backend.duringSubtitles = { [model] in
+            var yields = 0
+            while model.isDownloadingVideo && yields < 100 {
+                yields += 1
+                await Task.yield()
+            }
+            jobBusy = model.isBusy
+            shown = model.videoDisplay
+        }
+
+        await model.getContent()
+
+        #expect(jobBusy)
+        #expect(shown?.title == "Stopped")
+        #expect(model.status == .failure("Unsupported URL"))
+    }
+
+    @Test func fetchingAgainDoesNotRestartAStoppedVideoRow() async {
+        let model = await fetched()
+        model.content = .video
+        backend.videoProgress = []
+        backend.video = .failure(.Failed(message: "Unsupported URL"))
+        await model.getContent()
+        var shown: VideoProgressDisplay?
+        backend.duringFetch = { [model] in shown = model.videoDisplay }
+
+        await model.fetchMetadata()
+
+        #expect(shown?.title == "Stopped")
+    }
+
+    @Test func aFailedStepStaysOnTheVideoRowAndTheErrorReachesTheStatus() async {
+        let model = await fetched()
+        model.content = .video
+        let failed = VideoProgress.steps((.videoWithAudio, .done), (.finishing, .done), (.converting, .failed(percent: 40, bytes: nil)))
+        backend.videoProgress = [failed]
+        backend.video = .failure(.Failed(message: "no encoder"))
+
+        await model.getContent()
+
+        #expect(model.progress?.video == failed)
+        #expect(model.status == .failure("no encoder"))
     }
 
     @Test func fetchKeepsTheChosenFormat() async {
@@ -183,7 +248,7 @@ struct ContentModelTests {
         await model.getContent()
 
         #expect(backend.subtitleRequests.isEmpty)
-        #expect(model.progress == JobProgress(video: VideoProgress(percent: 100), subtitles: nil))
+        #expect(model.progress == JobProgress(video: .downloaded, subtitles: nil))
         #expect(model.files.map(\.label) == ["Video"])
         #expect(model.status == .info("Done."))
     }

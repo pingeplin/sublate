@@ -27,7 +27,7 @@ public struct ContentView: View {
                 }
                 OptionsSection(model: model, tracks: video.subtitles, heights: video.heights)
                 if let progress = model.progress {
-                    ProgressSection(progress: progress)
+                    ProgressSection(video: model.videoDisplay, subtitles: progress.subtitles)
                 }
                 if !model.files.isEmpty {
                     FilesSection(files: model.files)

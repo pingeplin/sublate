@@ -13,13 +13,6 @@ pub enum VideoFormat {
     AppleCompatible,
 }
 
-/// Which step a video's progress belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum VideoStage {
-    Downloading,
-    Converting,
-}
-
 /// Which streams a download takes.
 pub struct StreamChoice<'a> {
     pub format: VideoFormat,
@@ -37,6 +30,11 @@ impl StreamChoice<'_> {
             max_height: self.max_height,
             prefer_h264_aac: self.format == VideoFormat::AppleCompatible && short,
         }
+    }
+
+    /// Whether the download is converted afterwards when its streams need it.
+    pub fn converts(&self) -> bool {
+        self.format == VideoFormat::AppleCompatible
     }
 
     /// The height the download lands on.
@@ -64,6 +62,14 @@ mod tests {
         let choice = StreamChoice { format: VideoFormat::AppleCompatible, max_height: Some(720), heights: HEIGHTS };
 
         assert_eq!(choice.request(), StreamRequest { max_height: Some(720), prefer_h264_aac: true });
+    }
+
+    #[test]
+    fn only_apple_devices_convert_after_the_download() {
+        let converts = |format| StreamChoice { format, max_height: None, heights: HEIGHTS }.converts();
+
+        assert!(converts(VideoFormat::AppleCompatible));
+        assert!(!converts(VideoFormat::BestQuality));
     }
 
     #[test]

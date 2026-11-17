@@ -11,10 +11,12 @@ use crate::process;
 use crate::subtitle_job::SubtitleSource;
 use crate::toolchain::Toolchain;
 use crate::update::ActiveRelease;
+use crate::video_progress::{ByteProgress, DownloadEvent};
 
 /// What Finder-launched apps get; fixed so tools on the user's own PATH never take part.
 const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const PROGRESS_TAG: &str = "CT_PROGRESS";
+const STREAMS_TAG: &str = "CT_STREAMS";
 const PATH_TAG: &str = "CT_PATH";
 
 /// Which streams a video download prefers.
@@ -104,9 +106,13 @@ impl YtDlp {
         url: &str,
         out: &OutputLocation,
         request: &StreamRequest,
-        on_progress: impl Fn(f32),
+        on_event: impl Fn(DownloadEvent),
     ) -> AppResult<PathBuf> {
-        let progress = format!("download:{PROGRESS_TAG} %(progress._percent)s");
+        let progress = format!(
+            "download:{PROGRESS_TAG} %(info.format_id)s %(progress.status)s %(progress._percent)s \
+             %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s"
+        );
+        let streams = format!("before_dl:{STREAMS_TAG} %(format_id)s");
         let path = format!("after_move:{PATH_TAG} %(filepath)s");
         // Always an mp4 carrying the thumbnail as cover art, so Quick Look (Finder, open
         // dialogs) previews it and players show the cover. mp4 is forced because yt-dlp's
@@ -114,7 +120,8 @@ impl YtDlp {
         // re-encoded.
         #[rustfmt::skip]
         let mut flags = vec![
-            "--newline", "--progress", "--progress-template", &progress, "--print", &path,
+            "--newline", "--progress", "--progress-template", &progress,
+            "--print", &streams, "--print", &path,
             "--merge-output-format", "mp4", "--remux-video", "mp4",
             "--embed-thumbnail", "--convert-thumbnails", "jpg",
         ];
@@ -124,8 +131,8 @@ impl YtDlp {
         }
         let stdout = self
             .download(url, out, &flags, |line| {
-                if let Some(percent) = tagged(line, PROGRESS_TAG).and_then(|v| v.parse().ok()) {
-                    on_progress(percent);
+                if let Some(event) = download_event(line) {
+                    on_event(event);
                 }
             })
             .await?;
@@ -223,6 +230,22 @@ fn write_flag(kind: TrackKind) -> &'static str {
         TrackKind::Manual => "--write-subs",
         TrackKind::Auto => "--write-auto-subs",
     }
+}
+
+fn download_event(line: &str) -> Option<DownloadEvent> {
+    if let Some(ids) = tagged(line, STREAMS_TAG) {
+        return Some(DownloadEvent::Streams { format_ids: ids.split('+').map(String::from).collect() });
+    }
+    let mut fields = tagged(line, PROGRESS_TAG)?.split(' ');
+    let format_id = fields.next()?.to_string();
+    let finished = match fields.next()? {
+        "finished" => true,
+        "downloading" => false,
+        _ => return None,
+    };
+    let [percent, done, total, estimate] = [(); 4].map(|_| fields.next().and_then(|v| v.parse::<f64>().ok()));
+    let bytes = done.map(|done| ByteProgress { done: done as u64, total: total.or(estimate).map(|t| t as u64) });
+    Some(DownloadEvent::Stream { format_id, finished, percent: percent.map(|p| p as f32), bytes })
 }
 
 /// Our `--print`/`--progress-template` lines are prefixed with a tag and a space.
@@ -388,19 +411,80 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_video_download_reports_progress_and_the_path_it_wrote() {
+    async fn a_video_download_reports_its_streams_and_their_progress_and_the_path_it_wrote() {
         let dir = tempfile::tempdir().unwrap();
-        let script = "echo 'CT_PROGRESS 12.5'; echo '[download] noise'; echo 'CT_PROGRESS 100.0'
+        let script = "echo 'CT_STREAMS 395+251'; echo 'CT_PROGRESS 395 downloading 50.0 1024 2048 NA'
+            echo '[download] noise'; echo 'CT_PROGRESS 395 finished 100.0 2048 2048 NA'
+            echo 'CT_PROGRESS 251 finished 100.0 NA 4096 NA'
             : > ran-here; echo 'CT_PATH /out/Title [abc].mp4'";
         let ytdlp = scripted(dir.path(), script);
         let out = OutputLocation::new(dir.path().join("new dir"), "Title", "abc");
-        let progress = Mutex::new(Vec::new());
+        let events = Mutex::new(Vec::new());
 
-        let path = ytdlp.download_video(URL, &out, &StreamRequest::default(), |percent| progress.lock().unwrap().push(percent)).await.unwrap();
+        let path = ytdlp.download_video(URL, &out, &StreamRequest::default(), |e| events.lock().unwrap().push(e)).await.unwrap();
 
+        let stream = |id: &str, finished, percent, bytes| DownloadEvent::Stream { format_id: id.into(), finished, percent, bytes };
         assert_eq!(path, Path::new("/out/Title [abc].mp4"));
-        assert_eq!(progress.into_inner().unwrap(), [12.5, 100.0]);
+        assert_eq!(
+            events.into_inner().unwrap(),
+            [
+                DownloadEvent::Streams { format_ids: vec!["395".into(), "251".into()] },
+                stream("395", false, Some(50.0), Some(ByteProgress { done: 1024, total: Some(2048) })),
+                stream("395", true, Some(100.0), Some(ByteProgress { done: 2048, total: Some(2048) })),
+                stream("251", true, Some(100.0), None),
+            ]
+        );
         assert!(out.dir().join("ran-here").is_file());
+    }
+
+    #[tokio::test]
+    async fn a_video_download_asks_yt_dlp_for_the_streams_and_the_fields_it_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let ytdlp = scripted(dir.path(), r#"for arg; do echo "$arg"; done > args; echo 'CT_PATH /out/Title [abc].mp4'"#);
+        let out = OutputLocation::new(dir.path().to_path_buf(), "Title", "abc");
+
+        ytdlp.download_video(URL, &out, &StreamRequest::default(), |_| {}).await.unwrap();
+
+        let args = std::fs::read_to_string(out.dir().join("args")).unwrap();
+        let args: Vec<&str> = args.lines().collect();
+        let after = |flag: &str| args.windows(2).filter(|w| w[0] == flag).map(|w| w[1]).collect::<Vec<_>>();
+        assert!(after("--print").contains(&"before_dl:CT_STREAMS %(format_id)s"), "{args:?}");
+        assert_eq!(
+            after("--progress-template"),
+            ["download:CT_PROGRESS %(info.format_id)s %(progress.status)s %(progress._percent)s \
+              %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s"]
+        );
+    }
+
+    #[test]
+    fn a_download_line_prefers_the_size_over_the_estimate() {
+        let event = download_event("CT_PROGRESS 18 downloading 30.0 1100000 3600000 4000000");
+
+        let bytes = ByteProgress { done: 1_100_000, total: Some(3_600_000) };
+        assert_eq!(event, Some(DownloadEvent::Stream { format_id: "18".into(), finished: false, percent: Some(30.0), bytes: Some(bytes) }));
+    }
+
+    #[test]
+    fn a_download_line_with_another_status_is_ignored() {
+        assert_eq!(download_event("CT_PROGRESS 18 error NA NA NA NA"), None);
+    }
+
+    #[test]
+    fn a_download_line_reads_the_estimate_when_the_size_is_unknown() {
+        let event = download_event("CT_PROGRESS 18 downloading 30.0 1100000 NA 3600000.5");
+
+        let bytes = ByteProgress { done: 1_100_000, total: Some(3_600_000) };
+        assert_eq!(event, Some(DownloadEvent::Stream { format_id: "18".into(), finished: false, percent: Some(30.0), bytes: Some(bytes) }));
+    }
+
+    #[test]
+    fn a_download_line_without_sizes_or_percent_keeps_what_it_has() {
+        let no_total = download_event("CT_PROGRESS 18 downloading 30.0 1100000 NA NA");
+        let no_percent = download_event("CT_PROGRESS 18 downloading NA 1100000 3600000 NA");
+
+        let with_total = |total| Some(ByteProgress { done: 1_100_000, total });
+        assert_eq!(no_total, Some(DownloadEvent::Stream { format_id: "18".into(), finished: false, percent: Some(30.0), bytes: with_total(None) }));
+        assert_eq!(no_percent, Some(DownloadEvent::Stream { format_id: "18".into(), finished: false, percent: None, bytes: with_total(Some(3_600_000)) }));
     }
 
     #[tokio::test]

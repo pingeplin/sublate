@@ -16,6 +16,7 @@ pub mod toolchain;
 pub mod translate;
 pub mod update;
 pub mod video_format;
+pub mod video_progress;
 pub mod ytdlp;
 
 uniffi::setup_scaffolding!();
