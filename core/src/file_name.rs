@@ -132,10 +132,7 @@ mod tests {
 
     #[test]
     fn names_are_decomposed_as_finder_writes_them() {
-        let stem = file_stem("르세라핌 café", "id");
-
-        assert!(unicode_normalization::is_nfd(&stem));
-        assert_eq!(stem.nfc().collect::<String>(), "르세라핌 café [id]");
+        assert_eq!(file_stem("르세라핌 café", "id"), nfd("르세라핌 café [id]"));
     }
 
     #[test]
