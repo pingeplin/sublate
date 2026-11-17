@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use unicode_normalization::char::decompose_canonical;
+use unicode_normalization::UnicodeNormalization;
 
 /// Names are measured as UTF-8 bytes after NFD decomposition, which is how Synology Drive's
 /// File Provider sees them (Hangul splits into jamo); that is stricter than APFS or ext4.
@@ -11,14 +12,17 @@ const SUFFIX_RESERVE: usize = 40;
 const MAX_STEM: usize = MAX_NAME_BYTES - SUFFIX_RESERVE;
 
 /// `<title> [<id>]`: readable, and unique per video so same-titled videos never share files.
+/// Decomposed (NFD), as Finder writes names: AirDrop from Finder fails for a file in a folder
+/// whose name holds precomposed characters such as Hangul syllables or "é".
 pub fn file_stem(title: &str, id: &str) -> String {
     let id = portable(id);
     let suffix = format!(" [{id}]");
     let budget = MAX_STEM.saturating_sub(suffix.chars().map(name_units).sum());
-    match trim_edges(truncate(trim_edges(&portable(title)), budget)) {
+    let stem = match trim_edges(truncate(trim_edges(&portable(title)), budget)) {
         "" => id,
         title => format!("{title}{suffix}"),
-    }
+    };
+    stem.nfd().collect()
 }
 
 /// Where every file for one video goes: a folder of its own under the chosen directory,
@@ -122,11 +126,23 @@ mod tests {
         stem.strip_suffix(" [id]").expect("id suffix")
     }
 
+    fn nfd(s: &str) -> String {
+        s.nfd().collect()
+    }
+
+    #[test]
+    fn names_are_decomposed_as_finder_writes_them() {
+        let stem = file_stem("르세라핌 café", "id");
+
+        assert!(unicode_normalization::is_nfd(&stem));
+        assert_eq!(stem.nfc().collect::<String>(), "르세라핌 café [id]");
+    }
+
     #[test]
     fn appends_the_video_id_to_readable_titles() {
         assert_eq!(
             file_stem("[자막뉴스] 월급빼고 다 올랐다...한국은행의 결정은? / YTN", "SrvYHXmiLAY"),
-            "[자막뉴스] 월급빼고 다 올랐다...한국은행의 결정은？ ⧸ YTN [SrvYHXmiLAY]"
+            nfd("[자막뉴스] 월급빼고 다 올랐다...한국은행의 결정은？ ⧸ YTN [SrvYHXmiLAY]")
         );
     }
 
@@ -171,7 +187,7 @@ mod tests {
         let title = "[ENG⧸JP] 김채원, 너 내 도도독.. 더블유 동료가 돼라❣️ 르세라핌 채원의 매력 가~득 애교살 셀프 메이크업 손민수 꿀팁 대공개🌟 by W Korea";
         assert_eq!(nfd_bytes(title), 367);
         let stem = file_stem(title, "kGCLG-lxHiI");
-        assert_eq!(stem, "[ENG⧸JP] 김채원, 너 내 도도독.. 더블유 동료가 돼라❣️ 르세라핌 채원의 매 [kGCLG-lxHiI]");
+        assert_eq!(stem, nfd("[ENG⧸JP] 김채원, 너 내 도도독.. 더블유 동료가 돼라❣️ 르세라핌 채원의 매 [kGCLG-lxHiI]"));
         for suffix in [".mp4", ".ko-FmoQciUtYSc.srt", ".zh-TW.translated.srt", ".f401.webm.part"] {
             assert!(nfd_bytes(&format!("{stem}{suffix}")) <= MAX_NAME_BYTES, "{suffix}");
         }
@@ -187,8 +203,8 @@ mod tests {
     #[test]
     fn location_derives_template_and_subtitle_paths_from_one_stem() {
         let out = OutputLocation::new("/o", "100% 확실? ", "id");
-        assert_eq!(out.ytdlp_template(), "100%% 확실？ [id].%(ext)s");
-        assert_eq!(out.subtitle("zh-TW"), PathBuf::from("/o/100% 확실？ [id]/100% 확실？ [id].zh-TW.srt"));
+        assert_eq!(out.ytdlp_template(), nfd("100%% 확실？ [id].%(ext)s"));
+        assert_eq!(out.subtitle("zh-TW"), PathBuf::from(nfd("/o/100% 확실？ [id]/100% 확실？ [id].zh-TW.srt")));
     }
 
     #[test]
