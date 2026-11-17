@@ -32,7 +32,7 @@ struct LiveBridgeTests {
         #expect(settings.ytdlp != .missing)
         #expect(model.video?.title == "Me at the zoo")
         #expect(model.status == .info("Done."))
-        #expect(model.progress?.video?.percent == 100)
+        #expect(model.progress?.video.map { VideoProgressDisplay($0, jobRunning: false).title } == "Done")
         #expect(model.progress?.subtitles?.fraction == 1)
         #expect(model.files.count == 3)
         #expect(model.files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.filePath) })
@@ -63,7 +63,9 @@ struct LiveBridgeTests {
         await model.getContent()
 
         #expect(model.status == .info("Done."))
-        #expect(model.progress?.video == VideoProgress(stage: .downloading, percent: 100))
+        let steps = model.progress?.video?.steps ?? []
+        #expect(steps.dropLast().allSatisfy { $0.state == .done })
+        #expect(steps.last == VideoStepProgress(step: .converting, state: .skipped))
         #expect(model.files.count == 1)
         #expect(model.files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.filePath) })
     }

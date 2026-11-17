@@ -8,7 +8,8 @@ use crate::metadata::{SubtitleTrack, VideoMetadata};
 use crate::services::{AppState, Locations};
 use crate::subtitle_job::SubtitleOutput;
 use crate::update::{archive_name, parse_version, AppArchive, AppRelease, Version};
-use crate::video_format::{StreamChoice, VideoFormat, VideoStage};
+use crate::video_format::{StreamChoice, VideoFormat};
+use crate::video_progress::VideoProgress;
 
 /// Flattened to its message, so the UI handles one case whatever the cause.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -119,7 +120,7 @@ impl From<AppRelease> for AppUpdate {
 /// Called from the runtime thread, never the UI thread.
 #[uniffi::export(foreign)]
 pub trait VideoProgressListener: Send + Sync {
-    fn on_video_progress(&self, stage: VideoStage, percent: f32);
+    fn on_video_progress(&self, progress: VideoProgress);
 }
 
 /// Called from the runtime thread, never the UI thread. `total` is `None` when the server does
@@ -226,8 +227,8 @@ impl Backend {
         let choice = StreamChoice { format, max_height, heights: &video.heights };
         let path = self
             .state
-            .download_video(&video.url, &video.output(out_dir), &choice, |stage, percent| {
-                listener.on_video_progress(stage, percent)
+            .download_video(&video.url, &video.output(out_dir), &choice, |progress| {
+                listener.on_video_progress(progress)
             })
             .await?;
         Ok(path_string(&path))

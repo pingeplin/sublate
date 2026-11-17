@@ -24,7 +24,13 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     var subtitles: Result<SubtitleFiles, BackendError> = .success(
         SubtitleFiles(sourcePath: "/out/Title [abc].en.srt", translatedPath: "/out/Title [abc].zh-TW.srt", cueCount: 2)
     )
-    var videoProgress: [(stage: VideoStage, percent: Float)] = [(.downloading, 12.5), (.downloading, 100)]
+    var videoProgress: [VideoProgress] = [.downloading, .downloaded]
+    /// Runs after the progress reports, before the video download returns.
+    var duringVideoDownload: () async -> Void = {}
+    /// Runs before the metadata comes back.
+    var duringFetch: () async -> Void = {}
+    /// Runs after the progress reports, before the translation returns.
+    var duringSubtitles: () async -> Void = {}
     var translationProgress: [(done: UInt64, total: UInt64)] = [(1, 2), (2, 2)]
 
     private(set) var apiKey: String?
@@ -103,6 +109,7 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
 
     func fetchMetadata(url: String) async throws -> VideoMetadata {
         fetchedURLs.append(url)
+        await duringFetch()
         return try metadata.get()
     }
 
@@ -115,8 +122,9 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     ) async throws -> String {
         videoRequests.append(VideoRequest(video: video, outDir: outDir, maxHeight: maxHeight, format: format))
         for report in videoProgress {
-            listener.onVideoProgress(stage: report.stage, percent: report.percent)
+            listener.onVideoProgress(progress: report)
         }
+        await duringVideoDownload()
         return try self.video.get()
     }
 
@@ -129,6 +137,7 @@ final class FakeBackend: ContentBackend, SettingsBackend, AppUpdateBackend {
     ) async throws -> SubtitleFiles {
         subtitleRequests.append(SubtitleRequest(video: video, outDir: outDir, track: track, target: target))
         translationProgress.forEach(listener.onTranslationProgress)
+        await duringSubtitles()
         return try subtitles.get()
     }
 }
@@ -159,4 +168,13 @@ extension VideoMetadata {
             heights: [1080, 720, 360]
         )
     }
+}
+
+extension VideoProgress {
+    static func steps(_ steps: (VideoStep, StepState)...) -> VideoProgress {
+        VideoProgress(steps: steps.map { VideoStepProgress(step: $0, state: $1) })
+    }
+
+    static let downloading = steps((.videoWithAudio, .running(percent: 12.5, bytes: nil)), (.finishing, .waiting))
+    static let downloaded = steps((.videoWithAudio, .done), (.finishing, .done))
 }

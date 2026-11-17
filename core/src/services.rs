@@ -1,6 +1,7 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tokio::sync::OnceCell;
 
 use crate::apple_convert::AppleConverter;
@@ -18,13 +19,33 @@ use crate::update::{
     newer_release, ActiveRelease, AppArchive, AppDownloader, AppRelease, GitHubAppReleases, GitHubReleases, Installs,
     Updater, Version,
 };
-use crate::video_format::{StreamChoice, VideoFormat, VideoStage};
-use crate::ytdlp::YtDlp;
+use crate::video_format::StreamChoice;
+use crate::video_progress::{track_video, DownloadEvent, VideoProgress, VideoWork};
+use crate::ytdlp::{StreamRequest, YtDlp};
 
 const INSTALLS_DIR: &str = "yt-dlp";
 const UPDATE_MARKER: &str = "yt-dlp.last-check";
 /// Where a newer Sublate is unpacked before the app installs it.
 const APP_STAGING_DIR: &str = "app-update";
+
+/// One video download with the services that run it.
+struct VideoJob<'a> {
+    services: &'a Services,
+    url: &'a str,
+    out: &'a OutputLocation,
+    request: StreamRequest,
+}
+
+#[async_trait]
+impl VideoWork for VideoJob<'_> {
+    async fn download(&self, on_event: &(dyn Fn(DownloadEvent) + Sync)) -> AppResult<PathBuf> {
+        self.services.ytdlp.download_video(self.url, self.out, &self.request, on_event).await
+    }
+
+    async fn convert(&self, video: &Path, on_percent: &(dyn Fn(f32) + Sync)) -> AppResult<bool> {
+        self.services.converter.convert(video, on_percent).await
+    }
+}
 
 /// Where the app keeps what it runs and what it writes.
 pub struct Locations {
@@ -141,20 +162,11 @@ impl AppState {
         url: &str,
         out: &OutputLocation,
         choice: &StreamChoice<'_>,
-        on_progress: impl Fn(VideoStage, f32),
+        on_progress: impl Fn(VideoProgress) + Send,
     ) -> AppResult<PathBuf> {
         let services = self.services().await?;
-        let path = services
-            .ytdlp
-            .download_video(url, out, &choice.request(), |percent| on_progress(VideoStage::Downloading, percent))
-            .await?;
-        if choice.format == VideoFormat::AppleCompatible {
-            services
-                .converter
-                .convert(&path, |percent| on_progress(VideoStage::Converting, percent))
-                .await?;
-        }
-        Ok(path)
+        let work = VideoJob { services, url, out, request: choice.request() };
+        track_video(&work, choice.converts(), on_progress).await
     }
 
     /// Downloads a subtitle track and translates it into the language with code `target`. The

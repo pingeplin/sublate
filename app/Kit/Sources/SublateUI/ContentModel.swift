@@ -24,6 +24,13 @@ public final class ContentModel: JobActivity {
     private(set) var progress: JobProgress?
     private(set) var files: [OutputFile] = []
     private(set) var isBusy = false
+    /// Only the video download, which can end before or after the subtitles.
+    private(set) var isDownloadingVideo = false
+
+    /// What the video row shows; `nil` when the job has no video.
+    var videoDisplay: VideoProgressDisplay? {
+        progress?.video.map { VideoProgressDisplay($0, jobRunning: isDownloadingVideo) }
+    }
 
     private let backend: any ContentBackend
 
@@ -77,7 +84,7 @@ public final class ContentModel: JobActivity {
 
         files = []
         progress = JobProgress(
-            video: withVideo ? VideoProgress(percent: 0) : nil,
+            video: withVideo ? VideoProgress(steps: []) : nil,
             subtitles: content.includesSubtitles ? (track == nil ? .unavailable : .downloading) : nil
         )
         isBusy = true
@@ -100,6 +107,8 @@ public final class ContentModel: JobActivity {
         format: VideoFormat,
         to directory: String
     ) async throws {
+        isDownloadingVideo = true
+        defer { isDownloadingVideo = false }
         let path = try await tracking({ self.progress?.video = $0 }) { [backend] channel in
             try await backend.downloadVideo(
                 video: video, outDir: directory, maxHeight: maxHeight, format: format, listener: channel

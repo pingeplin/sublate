@@ -14,6 +14,7 @@ use sublate_core::languages::find_target;
 use sublate_core::metadata::TrackKind;
 use sublate_core::subtitle::parse_srt;
 use sublate_core::subtitle_job::{translate_subtitle_file, SubtitleSource};
+use sublate_core::video_progress::DownloadEvent;
 use sublate_core::translate::claude::ClaudeTranslator;
 use sublate_core::toolchain::Toolchain;
 use sublate_core::translate::{BatchRequest, Translator};
@@ -79,9 +80,9 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
     let meta = ytdlp.fetch_metadata(SHORT_VIDEO).await.unwrap();
     let dir = tempfile::tempdir().unwrap();
     let out = OutputLocation::new(dir.path().join("dir $HOME 100%"), "Save $HOME 100%?", &meta.id);
-    let progress = std::sync::Mutex::new(Vec::new());
+    let events = std::sync::Mutex::new(Vec::new());
     let path = ytdlp
-        .download_video(&meta.url, &out, &StreamRequest::default(), |p| progress.lock().unwrap().push(p))
+        .download_video(&meta.url, &out, &StreamRequest::default(), |e| events.lock().unwrap().push(e))
         .await
         .unwrap();
     let files: Vec<String> = std::fs::read_dir(out.dir())
@@ -89,8 +90,8 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
-    let progress = progress.into_inner().unwrap();
-    println!("video: {} / dir: {files:?} / {} progress events", path.display(), progress.len());
+    let events = events.into_inner().unwrap();
+    println!("video: {} / dir: {files:?} / {} progress events", path.display(), events.len());
     assert!(path.is_file());
     assert_eq!(files, [format!("Save ＄HOME 100%？ [{}].mp4", meta.id)]);
     let probe = tokio::process::Command::new(tools().ffmpeg_dir.join("ffprobe"))
@@ -102,7 +103,21 @@ async fn ytdlp_downloads_video_literally_named_into_any_directory() {
     let streams = String::from_utf8_lossy(&probe.stdout);
     println!("{streams}");
     assert!(streams.contains("attached_pic=1"), "cover art embedded");
-    assert!(progress.last().is_some_and(|&p| p >= 99.0));
+    let Some(DownloadEvent::Streams { format_ids }) = events.first() else {
+        panic!("the streams come first: {events:?}");
+    };
+    let last_stream = format_ids.last().unwrap();
+    assert!(
+        matches!(events.last(), Some(DownloadEvent::Stream { format_id, finished: true, .. }) if format_id == last_stream),
+        "the last stream finishes last: {events:?}"
+    );
+    let fields_in_order = |e: &DownloadEvent| match e {
+        DownloadEvent::Stream { finished: false, percent: Some(p), bytes: Some(b), .. } => {
+            (0.0..=100.0).contains(p) && b.total.is_some_and(|t| b.done <= t)
+        }
+        _ => false,
+    };
+    assert!(events.iter().any(fields_in_order), "percent and sizes land in their fields: {events:?}");
 }
 
 async fn streams_of(path: &Path) -> String {

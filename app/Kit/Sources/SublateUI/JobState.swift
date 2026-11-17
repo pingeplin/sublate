@@ -64,18 +64,6 @@ enum SubtitleProgress: Equatable, Sendable {
     }
 }
 
-struct VideoProgress: Equatable, Sendable {
-    var stage = VideoStage.downloading
-    var percent: Double
-
-    var label: String {
-        switch stage {
-        case .downloading: "Video"
-        case .converting: "Converting video for Apple devices"
-        }
-    }
-}
-
 struct JobProgress: Equatable {
     /// `nil` when the video isn't part of the job.
     var video: VideoProgress?
