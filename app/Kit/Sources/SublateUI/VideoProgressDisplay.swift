@@ -22,20 +22,17 @@ struct VideoProgressDisplay: Equatable {
     init(_ progress: VideoProgress, jobRunning: Bool) {
         let steps = progress.steps
         segments = steps.map(Segment.init)
-        let count = steps.count
-        let current = steps.indices.first { steps[$0].state.isRunning || steps[$0].state.isFailed }
 
         if steps.isEmpty {
             (title, detail, fraction) = jobRunning ? ("Preparing…", "", nil) : ("Stopped", "", 0)
-        } else if let index = current, case .running(let percent, let bytes) = steps[index].state {
-            title = "Step \(index + 1) of \(count) · \(steps[index].step.runningTitle(percent: percent))"
-            detail = Self.detail(percent: percent, bytes: bytes) ?? "Working…"
-            fraction = percent.map { Double($0) / 100 }
-        } else if let index = current, case .failed(let percent, let bytes) = steps[index].state {
-            title = "Step \(index + 1) of \(count) · Failed: \(steps[index].step.runningTitle(percent: percent))"
-            detail = Self.detail(percent: percent, bytes: bytes) ?? "Stopped"
-            fraction = percent.map { Double($0) / 100 } ?? 0
-        } else if steps.allSatisfy({ $0.state == .done || $0.state == .skipped }) {
+        } else if let index = segments.firstIndex(where: { $0.phase == .running || $0.phase == .failed }),
+                  case let (percent, bytes)? = steps[index].state.reported {
+            let failed = segments[index].phase == .failed
+            let name = steps[index].step.runningTitle(percent: percent)
+            title = "Step \(index + 1) of \(steps.count) · \(failed ? "Failed: " : "")\(name)"
+            detail = Self.detail(percent: percent, bytes: bytes) ?? (failed ? "Stopped" : "Working…")
+            fraction = percent.map { Double($0) / 100 } ?? (failed ? 0 : nil)
+        } else if segments.allSatisfy({ $0.phase == .done || $0.phase == .skipped }) {
             (title, detail, fraction) = ("Done", "", 1)
         } else {
             (title, detail, fraction) = ("Starting…", "", nil)
@@ -83,14 +80,12 @@ extension VideoStep {
 }
 
 extension StepState {
-    var isRunning: Bool {
-        if case .running = self { return true }
-        return false
-    }
-
-    var isFailed: Bool {
-        if case .failed = self { return true }
-        return false
+    /// The last values of a running or failed step.
+    var reported: (percent: Float?, bytes: ByteProgress?)? {
+        switch self {
+        case .running(let percent, let bytes), .failed(let percent, let bytes): (percent, bytes)
+        case .waiting, .done, .skipped: nil
+        }
     }
 }
 
