@@ -36,7 +36,8 @@ fi
 
 rm -f "$dmg"
 uvx --from "dmgbuild==$DMGBUILD_VERSION" dmgbuild \
-    -s "$here/dmg.settings.py" -D app="$staged" "$name" "$dmg"
+    -s "$here/dmg.settings.py" -D app="$staged" -D background="$here/dmg/background.png" \
+    "$name" "$dmg"
 codesign --timestamp --sign "$identity" "$dmg"
 
 if [[ -n "$profile" ]]; then
