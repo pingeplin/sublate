@@ -14,7 +14,7 @@ KIT := app/Kit
 XCFRAMEWORK := $(KIT)/$(CRATE)FFI.xcframework
 BINDINGS := $(KIT)/Sources/SublateCore
 DERIVED := app/build
-APP := $(DERIVED)/Build/Products/Release/Sublate.app
+APP = $(DERIVED)/Build/Products/Release/Sublate.app
 TOOLS := vendor/tools
 TOOLS_READY := $(TOOLS)/deno
 ICON := app/Sublate/Resources/AppIcon.icon
@@ -63,7 +63,7 @@ project: core tools
 build: project
 	xcodebuild -project app/Sublate.xcodeproj -scheme Sublate \
 		-configuration Release -derivedDataPath $(DERIVED) \
-		CODE_SIGN_IDENTITY="$(SIGN_IDENTITY)" build
+		CODE_SIGN_IDENTITY="$(SIGN_IDENTITY)" $(BUILD_SETTINGS) build
 	codesign --verify --deep --strict "$(APP)"
 	! grep -rqF "$(HOME)" "$(APP)"
 
@@ -76,6 +76,12 @@ dmg: build
 release: build
 	scripts/package.sh "$(APP)" "$(DMG)" "$(SIGN_IDENTITY)" "$(NOTARY_PROFILE)"
 
+# A dev build: its own identifier keeps its API key, settings and downloaded yt-dlp apart from
+# the installed release, and the dev icon tells the two apart. actool keeps what it compiled
+# before, so the dev build has its own folder and never leaves its icon in a release.
+run: DERIVED := app/build-dev
+run: BUILD_SETTINGS := PRODUCT_BUNDLE_IDENTIFIER=tech.radiw.sublate.dev \
+	ASSETCATALOG_COMPILER_APPICON_NAME=AppIconDev EXCLUDED_SOURCE_FILE_NAMES=AppIcon.icon
 run: build
 	open "$(APP)"
 
@@ -85,5 +91,5 @@ test: core
 
 clean:
 	cargo clean --manifest-path core/Cargo.toml
-	rm -rf $(DERIVED) $(XCFRAMEWORK) $(BINDINGS) app/Sublate.xcodeproj $(KIT)/.build
+	rm -rf $(DERIVED) app/build-dev $(XCFRAMEWORK) $(BINDINGS) app/Sublate.xcodeproj $(KIT)/.build
 	rm -rf $(TOOLS) vendor/.stage dist

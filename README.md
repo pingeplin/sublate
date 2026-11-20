@@ -23,7 +23,7 @@ Moving the app to the Trash leaves that copy and the caches behind; **Settings â
 Requirements: macOS 26, Xcode 27, Rust from [rustup](https://rustup.rs) (not Homebrew's `rust`, whose standard library needs macOS 26), [XcodeGen](https://github.com/yonaskolb/XcodeGen) and [uv](https://docs.astral.sh/uv/) (`brew install xcodegen uv`), and a Developer ID Application certificate (`SIGN_IDENTITY` in the `Makefile`). uv runs the pinned [dmgbuild](https://dmgbuild.readthedocs.io) that lays out the disk image.
 
 ```sh
-make run       # downloads and signs the bundled tools, builds the Rust core and the app, then opens it
+make run       # downloads and signs the bundled tools, builds the Rust core and the app, then opens it as a dev build
 make dmg       # signed disk image in dist/, for trying the installer on this Mac
 make release   # the same, notarized and stapled, plus the zip of the app: the files to publish
 ```
@@ -54,6 +54,7 @@ Developers can skip the saved key: without one, the app falls back to `ANTHROPIC
 | `app/Kit/` | Swift package: `SublateCore` (generated bindings over the static library) and `SublateUI` (view model and SwiftUI views). |
 | `app/Sublate/` | The app shell; `app/project.yml` is the XcodeGen spec. |
 | `app/Sublate/Resources/AppIcon.icon` | The app icon, an [Icon Composer](https://developer.apple.com/icon-composer/) document that Xcode compiles for every size and appearance; `make icon` renders `docs/icon.png` from it for this README. |
+| `app/Sublate/Resources/AppIconDev.icon` | The same icon with a DEV ribbon, for dev builds: `make run` and Xcode's Debug configuration. A dev build has its own bundle identifier, `tech.radiw.sublate.dev`, so it keeps its own API key, settings and downloaded `yt-dlp`, apart from the installed release. |
 | `vendor/` | Pinned third-party tools (`ffmpeg`, `deno`): `fetch.sh` downloads, verifies and signs them into `vendor/tools`, which the app bundles as `Contents/Resources/tools`. |
 | `scripts/package.sh` | Builds, signs and optionally notarizes the disk image; `dmg.settings.py` is its drag-to-Applications window layout. |
 
